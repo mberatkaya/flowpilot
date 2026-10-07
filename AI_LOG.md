@@ -121,3 +121,50 @@ Testler: eksik connection string başlangıç hatası; geçerli request'in `201`
 ### Git ve inceleme
 
 Sprint 2 commit mesajı: `feat: add service request API and persistence`. Çalışma branch'i remote'a gönderilecek ve aynı başlıkla `main` hedefli PR açılacak. PR merge edilmeyecek; squash merge inceleme sonrası tercih edilen yöntemdir. Sprint 3'e geçilmeyecek. Commit SHA ve PR URL'si final raporda verilecek.
+
+## 2026-10-07 — Sprint 3: request validation ve hata davranışı
+
+### Araç, görev ve branch
+
+- Araç: Codex; ASP.NET Core skill'i ve resmi Minimal API/validation/ProblemDetails belgeleri kullanıldı.
+- Görev: Yalnızca `POST /api/requests` server-side validation ve hata davranışlarını güvenilir hale getirmek; başarılı persistence akışını korumak; gerçek PostgreSQL ile geçersiz kaydın yazılmadığını ve güvenli hata sözleşmesini kanıtlamak; dokümantasyon, commit/push ve merge edilmeyecek PR hazırlamak.
+- Başlangıç çalışma ağacı temizdi. Sprint 2 PR #1 `MERGED` idi; `main` commit'i `e9c7226`, Sprint 2 commit'i `c7af738` bunun ancestor'ıydı. Remote fetch/fast-forward kontrolünden sonra güncel `main` üzerinden `feature/sprint-3-validation-error-handling` oluşturuldu. Yerel `origin/HEAD`, GitHub'daki `main` varsayılan branch'iyle eşitlendi.
+
+### Validation yaklaşımı ve limitler
+
+- ASP.NET Core 10'un `AddValidation()` desteği ve DataAnnotations kullanıldı. Validation endpoint handler'ından önce çalışır; yeni özel validation framework'ü veya paket eklenmedi.
+- DTO constructor'ı Name, Email ve Description değerlerini trim eder; eksik/null alanlar boş değere dönüşüp validasyonda reddedilir. DTO, client Id/CreatedAt alanlarını içermez.
+- Name zorunlu ve maksimum 200, Email zorunlu/`EmailAddress` formatında ve maksimum 320, Description zorunlu ve 10–4000 karakterdir. Uzunluklar trim sonrası değerlendirilir. Maksimumlar mevcut DB şemasını korur; açıklama minimumu kısa ama anlamlı bir operasyon talebi için 10 seçildi.
+- `ServiceRequestLimits` sabitleri DataAnnotations ve EF configuration tarafından paylaşılır. Şema maksimumları değişmediği için migration gerekmez.
+- Küçük bir `SupportedServiceTypeAttribute`, mevcut değiştirilemez `ServiceTypes.Supported` kümesini kullanır. Dört kabul edilen değer workflow-automation/system-integration/data-reporting/custom-software; karşılaştırma case-sensitive ve tam eşleşmedir. ServiceType whitespace'i normalize edilmez.
+- Alan kuralları DTO'da, limitler ortak sabitlerde ve kabul edilen hizmetler tek allowlist'te tutulur. Serviste aynı validation kuralları tekrar yazılmadı.
+
+### Hata response yaklaşımı
+
+- Mevcut `201` yalnızca `SaveChangesAsync` tamamlandıktan sonra üretilir; persistence servisi değiştirilmedi.
+- Yerleşik HttpValidationProblemDetails `400` üretir; `CustomizeProblemDetails` alan anahtarlarını camelCase yapar ve sabit `Validation failed.` başlığı verir. Hata mesajları kullanıcı girdisini geri yansıtmaz.
+- Binding hatalarında `ThrowOnBadRequest=false`, Development dahil bozuk/boş/null JSON veya yanlış alan tipinin `500` yerine `400` dönmesini sağlar. `UseStatusCodePages` boş binding hata response'una standart ProblemDetails gövdesi ekler; bozuk gövde için sabit, hassas bilgi içermeyen mesaj vardır.
+- `UseExceptionHandler` ve mevcut `AddProblemDetails` kullanıldı. `500` başlığı/açıklaması sabittir; extension alanları temizlenir. Exception mesajı, stack trace, DB adı, parola veya connection string response'a eklenmez. Global exception framework/Result kütüphanesi eklenmedi.
+
+### Çalıştırılan kontroller ve testler
+
+Komutlar ayrı kurulan .NET SDK 10.0.401 ile, repository kökünde çalıştırıldı; Docker engine erişilebilirdi.
+
+| Kontrol | Sonuç |
+| --- | --- |
+| `dotnet restore FlowPilot.slnx --locked-mode` | Başarılı; yeni paket eklenmedi |
+| `dotnet build FlowPilot.slnx --no-restore` | 0 uyarı, 0 hata |
+| `dotnet test --solution FlowPilot.slnx --no-build --no-restore` | 42 geçti, 0 başarısız, 0 atlanan |
+| `dotnet ef migrations has-pending-model-changes --project server/FlowPilot.Api` | Bekleyen model değişikliği yok; yeni migration oluşturulmadı |
+
+Gerçek PostgreSQL 16.14/Testcontainers kullanıldı; fake/in-memory provider yoktur. Mevcut migration her geçici test veritabanına uygulanır. Geçerli kayıt/trim edilmiş alanlar ve sınır değerleri bağımsız SQL bağlantısından okunur. Her geçersiz alan, eksik alan ve bozuk gövde senaryosunda istekten önce/sonra `ServiceRequests` kayıt sayısı eşit bulunur. Çoklu alan hatalarında dört alanın tamamı raporlanır; sensitive input marker/parola body'de yoktur. Client Id/CreatedAt değerlerinin kullanılmadığı SQL ile doğrulanır. Gerçek PostgreSQL'de bulunmayan database hatası Testing ve Development ortamlarında `500` döner, başarı veya internal bilgi dönmez.
+
+### Gerçekten karşılaşılan hata / değiştirilmiş öneri
+
+İlk patch'te `using System.Text.Json` dosyanın sonuna eklendiği için CS1529 derleme hatası oluştu. Bildirim dosyanın başına taşındı; sonraki build ve 42 test başarılı oldu. Reddedilmiş bir AI önerisi veya başka bir hata uydurulmadı.
+
+### Kapsam ve inceleme
+
+Frontend dosyaları, landing page, UI durumları, form entegrasyonu, authentication/admin/deployment/rate limiting ve yeni ürün özellikleri geliştirilmedi. Üretim ortamı/yük testleri ve e-posta teslim edilebilirliği bu validation testleriyle kanıtlanmaz. Sonraki sprintin frontend işi başlatılmadı.
+
+Teslim commit mesajı ve PR başlığı: `feat: add request validation and error handling`. Son diff incelemesinden sonra restore/build/test tekrar çalıştırıldı; 0 uyarı/0 hata ve 42 başarılı test sonucu korundu. Client ve migration dosyalarının diff'i boştu. Çalışma branch'i push edilip `main` hedefli PR açılacak; PR inceleme için OPEN/NOT MERGED bırakılacak. Commit SHA ve PR URL'si final raporda verilecek.
