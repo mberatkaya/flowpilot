@@ -6,6 +6,8 @@ Sprint 2 bölümü PostgreSQL kurulum rehberi olarak geçerlidir; **güncel vali
 
 Landing page'in güncel durumu ve frontend doğrulamaları Sprint 4 bölümündedir. Backend/API sözleşmesi Sprint 3'teki haliyle korunur.
 
+Form artık gerçek API'ye bağlıdır; birlikte çalıştırma ve güncel form davranışı Sprint 5 bölümündedir. Sprint 4'teki kapalı gönderim açıklaması yalnızca o milestone'a aittir.
+
 ## Projenin amacı
 
 FlowPilot, küçük işletmelerin tekrar eden operasyonel süreçlerini otomatikleştirmesine yardımcı olan kurgusal bir teknoloji hizmetidir. Teknik değerlendirme projesinin nihai hedefi, mobil ve masaüstü uyumlu bir landing page üzerinden hizmet taleplerini toplamak ve PostgreSQL üzerinde kalıcı olarak saklamaktır.
@@ -336,3 +338,57 @@ npm run build
 8 Vitest/React Testing Library testi: ana heading/landmark'lar, dört hizmet, CTA hedefi ve navigasyon anchor'ları, erişilebilir form label'ları, dört option value/label eşleşmesi, sıralı süreç adımları, gönderimin kapalı olması/native submit'in engellenmesi ve skip link. API mock testleri eklenmedi.
 
 `server/`, backend testleri, migration'lar ve backend davranışı değiştirilmedi. Sprint 4 PR'ı inceleme için açık bırakılacak; merge edilmeyecek. Sprint 5'e kendiliğinden geçilmeyecek.
+
+## Sprint 5 — Form/API entegrasyonu
+
+Sprint 4 PR #3'ün `main` içine merge edildiği doğrulandı. Çalışma branch'i `feature/sprint-5-form-api-integration`.
+
+### Birlikte çalıştırma
+
+Önce Sprint 2 bölümündeki PostgreSQL `.env` ve `ConnectionStrings:Default` environment/User Secrets ayarlarını tamamlayın. Gerçek parola yalnızca yerel ayarda tutulur. İlk terminal, repository kökünde:
+
+```sh
+docker compose up -d --wait postgres
+export ASPNETCORE_ENVIRONMENT=Development
+dotnet restore FlowPilot.slnx --locked-mode
+dotnet tool restore
+dotnet ef database update --project server/FlowPilot.Api
+dotnet run --project server/FlowPilot.Api --launch-profile http
+```
+
+İkinci terminal, repository kökünden:
+
+```sh
+cd client
+test -f .env.local || cp .env.example .env.local
+npm ci
+npm run dev
+```
+
+Tarayıcıdan `http://127.0.0.1:5173` adresini açın. API localhost:5080 üzerinde, PostgreSQL ise mevcut Compose ayarıyla localhost:5433 üzerindedir.
+
+`client/.env.example` içindeki `VITE_API_BASE_URL=/api`, API kökünü **/api dahil** belirtir; frontend `${VITE_API_BASE_URL}/requests` adresine POST yapar. Development'ta `/api` yolu Vite tarafından `API_PROXY_TARGET=http://localhost:5080` hedefine iletilir. Böylece browser aynı origin'i kullanır; backend CORS veya API sözleşmesi değişmedi. API adresi component'e hard-code edilmez.
+
+`VITE_API_BASE_URL`, build sırasında browser bundle'ına alınan public ayardır; secret içeremez. Production'da `/api` kullanımı için hosting katmanında aynı-origin API yönlendirmesi sağlanmalıdır. Ayrı origin kullanılacaksa `https://api.example.com/api` gibi tam API kökü seçilebilir; o origin'de yalnızca güvenilen frontend için CORS yapılandırması gerekir. Development proxy production build'e dahil değildir. Bu sprintte hosting/deployment veya backend CORS değişikliği yapılmadı.
+
+### Veri akışı ve form davranışı
+
+Kullanıcı → React form → trim/client validation → `POST /api/requests` → server validation → EF Core → PostgreSQL → HTTP sonucu → UI.
+
+Client validation kullanıcı deneyimi içindir; doğruluğun ve güvenliğin esas kaynağı değişmeyen server validation'dır. Client; zorunlu/whitespace olmayan isim (maksimum 200), temel e-posta formatı (maksimum 320), tam eşleşen dört ServiceType ve trim sonrası 10–4000 karakter açıklama kontrolü yapar. İsim/e-posta/açıklama trim edilmiş payload ile gönderilir. Server alanları yeniden doğrular.
+
+Form state'leri `idle`, `submitting`, `success`, `validation-error`, `server-error` olarak yönetilir. Bekleyen istekte alanlar ve düğme kilitlenir, “Gönderiliyor...” gösterilir; ref koruması aynı anda ikinci submit'i de engeller. Otomatik retry eklenmedi.
+
+- **Yalnızca HTTP 201:** “Talebiniz alındı. En kısa sürede sizinle iletişime geçeceğiz.” gösterilir ve form temizlenir. API, `201` yanıtını persistence tamamlandıktan sonra üretir. Fetch'in resolve olması, `200/204` veya client validation'ın geçmesi başarı sayılmaz.
+- **HTTP 400:** Bilinen alan anahtarları ilgili input yanındaki güvenli Türkçe mesajlara eşlenir. Backend'in raw mesajı, title/detail'i veya HTML'i ekrana basılmaz; bilinmeyen/bozuk hata genel alana düşer. Değerler korunur.
+- **500, diğer beklenmeyen status veya network failure:** “Talebiniz kaydedilemedi. Lütfen tekrar deneyin.” gösterilir; başarı yoktur, değerler korunur, kullanıcı yeniden deneyebilir.
+
+Alan hataları `aria-invalid`/`aria-describedby` ile bağlanır. Loading/success için polite status region, hata için alert kullanılır. Bekleyen alan grubunda `aria-busy` vardır; announcement alanı bunun dışındadır. Başarısız validation sonrasında ilk hatalı alan veya genel hata odağa alınır; düzeltme sırasında focus başka alana sıçramaz.
+
+### Doğrulama ve mevcut sınırlar
+
+Frontend: `npm run typecheck`, `npm test`, `npm run build` başarılı; toplam **33 test** geçti. Fetch mock'larıyla doğrulanan component davranışları gerçek E2E kanıtı değildir. Backend build 0 uyarı/0 hata, **42 regresyon testi** gerçek PostgreSQL/Testcontainers ile geçti.
+
+Ayrı manuel E2E kontrolünde gerçek React + API + PostgreSQL çalıştırıldı. `Sprint Five Test` / `sprint5@example.com` / `workflow-automation` kurgusal kaydı browser'dan gönderildi. Geçici DB kilidi sırasında loading/disabled durumları ve başarı mesajının yokluğu görüldü; kilit açıldıktan sonra API logunda `201`, UI'da başarı/temizleme ve bağımsız SQL sorgusunda aynı kayıt doğrulandı. API kapatıldığında hata mesajı çıktı, değerler korundu, düğme yeniden açıldı; DB kayıt sayısı artmadı. Ayrıntılar `AI_LOG.md` içindedir.
+
+Backend kaynakları, testleri, migration'lar, paketler ve landing page tasarımı değiştirilmedi. Admin/auth/analytics/e-posta/rate limiting/deployment eklenmedi. Manuel E2E otomatik CI/browser test paketi değildir; Sprint 6 kalite/deployment işleri başlatılmadı. PR inceleme için OPEN/NOT MERGED bırakılacak.

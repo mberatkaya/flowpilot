@@ -79,16 +79,16 @@ describe('FlowPilot landing page', () => {
     expect(within(section).getAllByRole('listitem')).toHaveLength(3)
   })
 
-  it('clearly disables sending and prevents native form navigation', () => {
+  it('enables sending and announces client errors without native navigation', () => {
     render(<App />)
     const button = screen.getByRole('button', { name: 'Talep Gönder' })
-    expect(button).toBeDisabled()
-    expect(button).toHaveAccessibleDescription(/Talep gönderimi henüz açık değil/)
-    expect(screen.getByText('Formu inceleyebilirsiniz. Bilgileriniz gönderilmez veya kaydedilmez.')).toBeVisible()
+    expect(button).toBeEnabled()
     const form = screen.getByRole('form', { name: 'Projenizi anlatın' })
     const event = new Event('submit', { bubbles: true, cancelable: true })
     fireEvent(form, event)
     expect(event.defaultPrevented).toBe(true)
+    expect(screen.getByRole('textbox', { name: 'İsim' })).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByRole('alert')).toHaveTextContent('Formdaki bilgileri kontrol edip tekrar deneyin.')
   })
 
   it('provides a skip link to the focusable main content', () => {
