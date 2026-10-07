@@ -1,25 +1,18 @@
-using System.Net;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Xunit;
 
 namespace FlowPilot.Api.Tests;
 
-public class ApiHostTests : IClassFixture<WebApplicationFactory<Program>>
+public class ApiHostTests
 {
-    private readonly WebApplicationFactory<Program> _factory;
-
-    public ApiHostTests(WebApplicationFactory<Program> factory)
-    {
-        _factory = factory;
-    }
-
     [Fact]
-    public async Task HostStartsWithoutDatabaseConfiguration()
+    public void MissingConnectionStringFailsWithConfigurationMessage()
     {
-        using var client = _factory.CreateClient();
-        using var response = await client.GetAsync("/", TestContext.Current.CancellationToken);
+        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+            builder.UseEnvironment("Testing").UseSetting("ConnectionStrings:Default", ""));
 
-        // The empty API host should start successfully without exposing a route.
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        var error = Assert.Throws<InvalidOperationException>(() => factory.CreateClient());
+        Assert.Contains("ConnectionStrings:Default", error.Message);
     }
 }
