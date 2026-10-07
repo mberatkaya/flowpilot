@@ -408,3 +408,103 @@ Ana commit `c9a0cca644cf19385b96ae963379982cdb31a9c0`, mesajı `ci: add automate
 Checkout logundaki git-init varsayılan branch adı hint'i uygulama/derleyici warning'i değildir; derleme warning sayısı 0. Test/build/cache adımlarının tamamı başarılıdır. CI workflow'u değişmeden sonucu kayda geçirmek için yalnızca AI_LOG/README/PR dokümantasyon güncellemesi yapılır; bu commit'in PR kontrolü de tamamlanana kadar izlenir. Main push tetiği workflow'da tanımlıdır; PR merge edilmediğinden bu sprintte main push run'ı çalıştırılmaz.
 
 Geçici QA dosyaları kaldırıldı; API/Vite/PostgreSQL kontrol süreçleri durduruldu, local volume korundu. Ürün/test/migration ve dependency diff'leri boş kaldı. Sprint 7 deployment/final teslim işine geçilmedi.
+
+## 2026-10-07 — Sprint 7: production delivery hazırlığı
+
+### Araç, görev ve başlangıç
+
+- Araç: Codex; Git/gh/npm/.NET/Docker CLI, patch ve CUA browser. ASP.NET Core skill'inin pipeline, API ve operations referansları kullanıldı. Alt ajan kullanılmadı.
+- Görev: Yeni ürün özelliği eklemeden mümkünse gerçek production deployment, kontrollü PostgreSQL migration, canlı browser/SQL teslim kanıtları ve final CI/dokümantasyon; authenticated hedef yoksa doğrulanmış deployment-ready fallback. Ücretli/geri dönüşü zor resource oluşturulmaması ve sahte URL verilmemesi istendi.
+- Sprint 6 PR #5 MERGED; mergedAt `2026-10-07T14:21:21Z`, merge commit `5de7a220e53f3903a8e39842c59a3947a2dc348a`. Fetch/fast-forward sonrası güncel main üzerinden `feature/sprint-7-production-delivery` oluşturuldu; başlangıç çalışma ağacı temizdi.
+
+### Deployment hedefi kontrolü ve sonuç
+
+- railway/flyctl/render/heroku/az/aws/gcloud/vercel/netlify/doctl CLI'ları PATH ve standart kurulum dizinlerinde bulunmadı; ilgili deployment environment variable adları yoktu.
+- Repository'de hosting configuration veya önceden bağlı hedef yoktu. Home `.aws` dizini vardı ancak dosya/profile/credential içermiyordu. Secret içerikleri çıktıya yazılmadı.
+- Kullanıcıdan async olarak varsa hosting platformu/mevcut proje adı soruldu. Bu çalışma sırasında bir hedef/credential verilmedi. Talepte açıkça izin verilen fallback uygulandı: paket/configuration/release rehberi hazırlandı; canlı URL/production DB varmış gibi gösterilmedi.
+- Ücretli resource, kalıcı production DB, domain veya public tunnel oluşturulmadı. Yerel localhost testi production deployment olarak raporlanmaz.
+- GitHub repo `isPrivate=true`; görünürlük veya kişi erişimi değiştirilmedi. Dış değerlendirici erişimi ayrıca doğrulanmalıdır.
+
+### Mimari ve configuration kararları
+
+- React production çıktısı publish paketinin wwwroot dizinine kopyalanır. ASP.NET Core UseDefaultFiles/UseStaticFiles aynı origin üzerinde `/` ve static assets sunar; mevcut `/api/requests` API'si aynen korunur. Development Vite akışı korunur.
+- Landing page client router kullanmadığından SPA fallback eklenmedi; yanlış API/asset/diğer route'lar HTML başarıya dönüşmeden 404 kalır. CORS/AllowAnyOrigin eklenmedi.
+- `scripts/publish-production.sh` Node/.NET locked bağımlılıkları kurar, frontend'i public `/api` kökü ile build eder, Release publish ve idempotent migration SQL üretir. Çıktı artifacts/production, Git dışında. AppHost kapalı; framework-dependent DLL paketi ASP.NET Core 10 runtime ile çalışır, local OS executable'ına bağımlı değildir.
+- SQL generation DB'ye bağlanmaz; yalnız design-time host'u kurmak için kullanılmayan placeholder connection string process env'ine verilir. Gerçek production secret build sırasında gerekmez ve pakete yazılmaz.
+- Migration uygulaması startup'tan ayrıdır. `deploy/README.md`, SQL inceleme + hedef PG secret environment + ON_ERROR_STOP + history sorgusu sonrası release başlangıcı kapısını tanımlar. Hosting hedefi olmadığı için production migration uygulanmadı.
+- `deploy/production.env.example`: Production, internal bind port, gerçek AllowedHosts ve provider'a ait TLS VerifyFull PostgreSQL secret referansı; gerçek secret/localhost endpoint içermez, otomatik yüklenmez.
+- Public HTTPS hosting katmanında sağlanmalı; internal HTTP port public açılmamalı. Geniş forwarded-header güveni, developer exception page, auth/admin/yeni endpoint eklenmedi. Health endpoint gerektiren gerçek platform koşulu bulunmadı.
+
+Resmi teknik kaynaklar: [ASP.NET Core static files](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/static-files?view=aspnetcore-10.0), [EF Core migration uygulaması](https://learn.microsoft.com/en-us/ef/core/managing-schemas/migrations/applying). Yapılan seçim küçük same-origin paket ve kontrollü SQL release adımıdır; büyük refactor/deployment framework'ü yoktur.
+
+### Final test ve publish sonuçları
+
+Frontend komutları client/; .NET komutları kökte; Node 24.14.0/npm 11.9.0, SDK 10.0.401, gerçek Docker/Testcontainers kullanıldı.
+
+| Komut | Gerçek sonuç |
+| --- | --- |
+| npm ci | Başarılı, 0 bildirilen npm vulnerability |
+| npm run typecheck | Başarılı |
+| npm test | 33/33; 2 dosya |
+| npm run build | TypeScript/Vite production build başarılı |
+| dotnet restore FlowPilot.slnx --locked-mode | Başarılı |
+| dotnet build FlowPilot.slnx --configuration Release --no-restore | 0 warning/0 error |
+| dotnet test --solution FlowPilot.slnx --configuration Release --no-build --no-restore | 47/47, 0 failed/0 skipped; gerçek PostgreSQL |
+| dotnet publish (scripts/publish-production.sh içinde Release, --no-restore, UseAppHost=false) | Başarılı |
+| bash scripts/publish-production.sh | wwwroot + .NET DLL + idempotent migrations.sql üretildi |
+| bash -n script ve README/release sh block'ları | Syntax geçerli |
+
+İlk static-hosting değişikliğinde 46 test geçti. Ardından mevcut gerçek DB hata testine Production environment varyantı eklendi; restore/build/test tekrar çalıştırıldı ve güncel toplam **47** oldu. Ek dört hosting testi root HTML/asset serving ve bilinmeyen API/asset/diğer yol 404 sözleşmesini doğrular. Mevcut 42 test kapatılmadı/gevşetilmedi; fake/in-memory provider yoktur. Frontend kaynak/manifest/lock ve mevcut migration değişmedi.
+
+Son paket üretimi AppHost=false ile tekrar başarılı oldu; executable'ın bulunmadığı, DLL/index/assets/SQL'in bulunduğu kontrol edildi. Script eski generated output'u temizleyerek stale frontend asset bırakmaz.
+
+### Migration doğrulaması — yalnız yerel QA
+
+Production hedefi bulunmadığı için ayrı, geçici gerçek PostgreSQL 16.14 container'ı `flowpilot-sprint7-qa-db`, loopback port 5434, DB `flowpilot_delivery_qa` olarak başlatıldı. Random parola yalnız /tmp altında chmod600 dosyalarda tutuldu; repository/çıktıya yazılmadı. Mevcut development volume'a dokunulmadı.
+
+Generated SQL boş QA DB'ye psql ON_ERROR_STOP ile uygulandı: CREATE TABLE, transaction/DO/history başarılı. Aynı SQL ikinci kez çalıştırıldı; history/table duplicate hatası oluşmadı. Bağımsız history sorgusu `20261007103358_InitialCreate` / `10.0.12`, başlangıç ServiceRequests sayısı 0 gösterdi. Bu sonuç production migration kanıtı değildir.
+
+### Publish/browser smoke — yalnız yerel Production environment
+
+Vite çalıştırılmadı. Gerçek publish DLL'i, publish dizini çalışma dizini olacak şekilde localhost:5080 üzerinde `ASPNETCORE_ENVIRONMENT=Production`, local QA secret ve local AllowedHosts override ile çalıştırıldı. Public deployment/HTTPS değildir; localhost yalnız bu yerel QA process'indeydi.
+
+Kurgusal payload:
+
+```text
+Name: Production Delivery Test
+Email: production-test@example.com
+Service: data-reporting
+Description: This is fictional data created only to verify the FlowPilot technical evaluation deployment.
+```
+
+- Browser gerçek ASP.NET host'tan root HTML ve hashed CSS/JS için 200 aldı; frontend ve API aynı `http://127.0.0.1:5080` origin'indeydi.
+- Sadece izole QA DB'de geçici SHARE lock ile INSERT bekletildi. Loading/disabled görüldü; success yoktu. Bu yöntem canlı production'a uygulanmadı.
+- Lock COMMIT sonrası browser POST logu HTTP 201 (~6 saniye; lock beklemesi dahil); UI gerçek success, dört alan temizlenmiş/enabled.
+- Bağımsız SQL tüm alanları doğruladı: `ff9174b0-cffa-43fe-bba5-3d647bf3392f`, CreatedAt `2026-10-07T14:28:19.657943+00:00`.
+- Browser console warn/error listesi boştu; 320×800 ve 1440×1000 document width viewport ile eşitti, yatay taşma yok. Görüntüler repository dışında flowpilot-sprint7 visualizations dizininde, local-production adıyla kaydedildi; canlı kanıt olarak sunulmaz.
+
+### Güvenli negatif test — yalnız yerel QA
+
+- Browser'da invalid-email + short description reddedildi; iki field error/aria-invalid, genel alert, success boş. Mevcut component testleri invalid client için sıfır API çağrısını ayrıca kapsar.
+- Gerçek published API'ye aynı geçersiz veri doğrudan gönderildi: HTTP 400, email/description alan hataları. Bağımsız SQL sayısı önce/sonra 1; yeni kayıt yok.
+- Canlı production API/DB kapatılmadı veya bozulmadı; böyle bir hedef zaten yoktu. Güvenli canlı negatif test hâlâ bekliyor. Production environment güvenli 500 yanıtı ayrı Testcontainers varyantında doğrulandı.
+
+Kontrol sonunda publish process'i durduruldu, geçici QA container ve /tmp credential dosyaları kaldırıldı. QA kaydı kalıcı production kaydı değildir; sonuç query çıktısı ve bu logda saklanır. Asıl development DB volume korunur. Geçici viewport reset edildi.
+
+### Security/configuration ve requirement audit
+
+Paket içinde env/launchSettings/local veya QA credential bulunmadığı literal/filename kontrolleriyle doğrulandı; frontend JS'de localhost:5080 API origin'i yoktur. Public içerik yalnız wwwroot'tur; SQL/appsettings dışındadır. Mevcut secure ProblemDetails, server validation/allowlist ve server Id/CreatedAt üretimi korunur.
+
+Tamamlanan kanıtlar: responsive landing page; dört alan; client/server validation; submitting/success/error; gerçek server-side persistence; DB yazımı sonrası success; source ve dokümantasyon; same-origin deployable paket/configuration; final test suite. Önceki audit/E2E sonuçları canlı deployment sonucuna dönüştürülmedi.
+
+Bekleyenler: gerçek live HTTPS URL; kalıcı production PostgreSQL ve migration/history; canlı browser 201/success + bağımsız production SQL; güvenli canlı negatif test; dış değerlendiricinin private repo erişimi doğrulaması; merge sonrası teslim SHA. Dolayısıyla production tesliminin bütünü tamamlandı denmez.
+
+### Dokümantasyon, gerçek sorunlar ve Git
+
+README istenen Project/Live demo/Stack/Architecture/Local setup/Environment/Database/Tests/Validation/AI-assisted/Known limitations/Delivery bölümlerine dönüştürüldü. Release rehberi migration ve hosting kabul kapılarını açıklar. Gerçek canlı URL bulunmadığı net yazıldı.
+
+Bu sprintte build/test/package hatası yaşanmadı. Eksik authenticated hosting hedefi, gerçek dış ortam engelidir; uygulama bug'ı veya başarılı deployment olarak sunulmaz. Reddedilmiş AI önerisi/hata/çözüm hikâyesi uydurulmadı.
+
+Operations commit: `9d6d8b4`, `ops: add production deployment configuration`. Final README/AI_LOG için ayrı dokümantasyon commit'i hazırlanır. PR başlığı `ops: prepare FlowPilot production delivery`; main hedefli, merge edilmeden bırakılır. Final branch CI test/publish sonucu push sonrası incelenip gerçek run URL'si kaydedilir.
+
+**Delivery kimliği tanımı:** Sprint 7 PR main merge sonucu SHA. Henüz merge yok, dolayısıyla delivery SHA yok. Sonradan README'ye bu release SHA yazılması yeni HEAD oluşturursa release kimliği değiştirilmez; döngüye sokulmaz. Branch aday SHA'sı delivery SHA diye sunulmaz.
