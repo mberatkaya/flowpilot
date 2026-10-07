@@ -25,11 +25,40 @@ client/                       React ve frontend testleri
 server/FlowPilot.Api/          API, Data ve migration
 tests/FlowPilot.Api.Tests/    Gerçek PostgreSQL API/hosting testleri
 scripts/publish-production.sh Production paket üretimi
+Dockerfile / compose.yaml     React + API image, migration job ve PostgreSQL
 deploy/                      Release rehberi ve public configuration örneği
 .github/workflows/quality.yml CI
 ```
 
-## Local setup
+## Docker Compose ile çalıştırma
+
+Yalnız Docker engine ve Docker Compose gerekir; Node.js/.NET host kurulumu gerekmez. Repository kökünde ilk kurulumda:
+
+```sh
+test -f .env || cp .env.example .env
+```
+
+`.env` içindeki `POSTGRES_PASSWORD=REPLACE_LOCALLY` değerini kendi yerel parolanızla değiştirin. Mevcut `.env`/DB volume varsa parolayı koruyun. Ardından tüm uygulama:
+
+```sh
+docker compose up -d --build
+```
+
+Frontend ve API: **http://127.0.0.1:5080/**. `APP_PORT` ile host portu değiştirilebilir. React production build'i API image'ındaki `wwwroot/` üzerinden sunulur; Vite development server veya ayrı frontend process'i gerekmez. API ve frontend aynı origin'dedir.
+
+Compose sırası: PostgreSQL healthy → tek seferlik `migrate` job'u → `app`. Migration bundle yalnız eksik migration'ları uygular; hata varsa app başlatılmaz. `migrate` için başarılı `Exited (0)` normaldir. API startup kodu migration çalıştırmaz. Aynı komut tekrar çalıştırılabilir; mevcut `flowpilot_postgres_data` volume'u ve kayıtlar korunur.
+
+```sh
+docker compose ps -a
+docker compose logs --tail=100 app migrate
+docker compose down
+```
+
+`down` volume'u korur; `down -v` veritabanı verilerini siler. Hostta ayrıca API çalışıyorsa 5080 portunu boşaltın veya `.env` içinde `APP_PORT` değiştirin. Compose container içi bağlantıyı `postgres:5432` olarak kurar; root `.env` içindeki host `ConnectionStrings__Default` ve `ASPNETCORE_URLS` container ayarlarını değiştirmez. PostgreSQL host erişimi 127.0.0.1:5433'tür.
+
+Image build context'i `.dockerignore` ile yerel secret/build çıktılarından arındırılır. Runtime image'larında SDK/Node/kaynak kod yoktur ve uygulama non-root kullanıcıyla çalışır. Bu Compose dosyası yerel kullanım içindir; canlı hosting rehberi ayrı tutulur.
+
+## Local setup (development / hot reload)
 
 Gereksinimler: Node.js 24.14+ (24.x), npm, kararlı .NET 10 SDK ve çalışan Docker engine. Standart PostgreSQL kurulumu da uygulama için kullanılabilir; Testcontainers için Docker gerekir.
 
@@ -90,6 +119,7 @@ Compose PostgreSQL 16.14 yalnızca 127.0.0.1:5433'e açılır, `flowpilot_postgr
 | `ASPNETCORE_URLS` | Hosting'in internal bind portu/adresi |
 | `AllowedHosts` | Production gerçek public host listesi; local varsayılanı override edin |
 | `POSTGRES_DB/USER/PASSWORD/PORT` | Yerel Compose; root `.env.example` referansı |
+| `APP_PORT` | Compose frontend/API host portu; varsayılan 5080 |
 | `VITE_API_BASE_URL` | Public build-time API kökü, /api dahil; production script'i `/api` kullanır |
 | `API_PROXY_TARGET` | Yalnız Vite development proxy hedefi; production'da kullanılmaz |
 
@@ -97,7 +127,7 @@ Compose PostgreSQL 16.14 yalnızca 127.0.0.1:5433'e açılır, `flowpilot_postgr
 
 ## Database
 
-Migration `20261007103358_InitialCreate` repository'dedir; yeniden oluşturmayın. Startup migration yoktur.
+Migration `20261007103358_InitialCreate` repository'dedir; yeniden oluşturmayın. API startup migration yoktur; Compose ayrı `migrate` job'u ile uygular.
 
 Yerel DB (Development/environment secret ayarıyla):
 
@@ -174,7 +204,7 @@ Sprint 7'de **yerel publish** smoke test: React/API aynı 5080 origin'inde, Prod
 
 ## AI-assisted development
 
-Codex ile yürütülen Sprint 1–7 görevleri, gerçek kararlar/hatalar ve doğrulamalar [AI_LOG.md](AI_LOG.md) içindedir. Tarihsel test sayıları güncel sonuç olarak sunulmaz.
+Codex ile yürütülen Sprint 1–7 ve sonraki Docker Compose çalışması, gerçek kararlar/hatalar ve doğrulamalar [AI_LOG.md](AI_LOG.md) içindedir. Tarihsel test sayıları güncel sonuç olarak sunulmaz.
 
 ## Known limitations
 

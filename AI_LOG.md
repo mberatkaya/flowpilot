@@ -508,3 +508,36 @@ Bu sprintte build/test/package hatası yaşanmadı. Eksik authenticated hosting 
 Operations commit: `9d6d8b4`, `ops: add production deployment configuration`. Final README/AI_LOG için ayrı dokümantasyon commit'i hazırlanır. PR başlığı `ops: prepare FlowPilot production delivery`; main hedefli, merge edilmeden bırakılır. İlk [final branch CI run 37638405334](https://github.com/mberatkaya/flowpilot/actions/runs/37638405334) `2f8ecfc` head'i için SUCCESS, job 1m20s. Loglar incelendi: 33 frontend, 47 gerçek PostgreSQL backend testi, 0 failed/skipped, 0 warning/error; production publish/wwwroot/idempotent SQL paket adımı başarılı. İlk run başarısız olmadığından root cause/düzeltme/retry hikâyesi yoktur. [PR #6](https://github.com/mberatkaya/flowpilot/pull/6) OPEN / NOT MERGED. Bu sonucu ve PR bağlantısını kaydeden dokümantasyon commit'inin CI'ı da final rapor öncesinde kontrol edilir.
 
 **Delivery kimliği tanımı:** Sprint 7 PR main merge sonucu SHA. Henüz merge yok, dolayısıyla delivery SHA yok. Sonradan README'ye bu release SHA yazılması yeni HEAD oluşturursa release kimliği değiştirilmez; döngüye sokulmaz. Branch aday SHA'sı delivery SHA diye sunulmaz.
+
+## Sprint sonrası — Docker Compose ile tüm uygulamayı çalıştırma (2026-10-07)
+
+- Araç: Codex.
+- Görev: frontend, backend ve PostgreSQL'i `docker compose up -d --build` ile birlikte başlatmak. Kullanıcının bu yeni talebi, ilk aşamadaki Docker eklememe sınırını bu çalışma için değiştirdi.
+- Mevcut temiz `feature/sprint-7-production-delivery` branch'inde çalışıldı; commit/push/PR veya merge yapılmadı.
+
+### Teknik kararlar
+
+- Root `Dockerfile` çok aşamalı build: Node 24.14.0 ile locked npm install/React production build; SDK 10.0.401 ile locked backend restore/Release publish; ASP.NET 10.0.12 runtime. React `wwwroot/` üzerinden API ile aynı origin'de sunulur; ayrı Vite/NGINX container'ı gerekmez.
+- Compose `app`, tek seferlik `migrate` ve mevcut `postgres` servislerinden oluşur. PostgreSQL healthy olmadan migration başlamaz; migration başarılı tamamlanmadan app başlamaz. API startup kodu değiştirilmedi.
+- Migration image'ı build sırasında üretilen framework-dependent EF bundle içerir; runtime'da SDK/kaynak kod/EF CLI kurulmaz. Build sırasında gerçek DB secret'ı verilmez; yalnız kullanılmayan design-time placeholder vardır. Çalıştırmada Compose secret'ı environment üzerinden verir.
+- Container connection string'i `postgres:5432` kullanır; host `.env` içindeki localhost connection string ve development URL bind ayarı container'a aktarılmaz. `APP_PORT` varsayılan 5080; PostgreSQL host portu mevcut 5433. Her iki port loopback'e açılır.
+- Runtime non-root (`app`, UID 1654); `.dockerignore` env/credential, Git ve host build çıktılarını context dışında tutar. Mevcut `flowpilot_postgres_data` volume'u korunur. README ve `.env.example` tek komut, migration sırası, loglar ve volume davranışıyla güncellendi.
+
+Kararlar [Docker Compose dependency koşulları](https://docs.docker.com/compose/how-tos/startup-order/), [EF migration bundle](https://learn.microsoft.com/en-us/ef/core/managing-schemas/migrations/applying#bundles) ve [Microsoft non-root container guidance](https://learn.microsoft.com/en-us/dotnet/core/whats-new/dotnet-8/containers) üzerinden kontrol edildi. Resmi image tag'lerinin linux/arm64 ve linux/amd64 manifest'leri registry'de doğrulandı; yerel çalıştırma arm64 üzerinde yapıldı.
+
+### Gerçek doğrulama sonuçları
+
+- `docker compose config --quiet`, `git diff --check`: başarılı.
+- `docker compose up -d --build`: başarılı. Frontend TypeScript/Vite build, backend Release publish ve EF bundle üretimi image içinde tamamlandı. Aynı komut ikinci kez de başarılı oldu; mevcut migration yeniden uygulanmadı.
+- `docker compose ps -a`: app running, postgres healthy, migrate `Exited (0)`. Hostta önceki adımda başlatılan doğrudan `dotnet` process'i durduruldu; 5080 artık Docker app tarafından sunuluyor.
+- HTTP `/`, gerçek hashed JS/CSS asset'leri: 200. Runtime image'da yerel `.env`, kaynak kod, node_modules, launchSettings veya SDK yok; `docker compose exec -T app id` non-root kullanıcıyı doğruladı.
+- Ana development DB history mevcut `20261007103358_InitialCreate`, kayıt sayısı 4; ana DB'ye test kaydı eklenmedi veya kayıt silinmedi.
+- Ayrı `flowpilot-dockerqa` Compose projesi / 5081 app / 5434 DB / bağımsız volume ile boş DB ilk kurulum testi: migration otomatik uygulandı, başlangıç kayıt sayısı 0.
+- QA tarayıcısında kurgusal `Docker Compose Test`, `docker-test@example.com`, `workflow-automation` ve test açıklaması gönderildi: submitting görüldü, gerçek HTTP 201 sonrası başarı mesajı ve temizlenmiş form. Bağımsız SQL ID `f871d76b-a094-4627-80d6-4b026b1e1f88`, UTC CreatedAt `2026-10-07 16:13:28.821529+00`; tüm gönderilen alanlar kaydedildi. Browser warn/error listesi boş.
+- QA API'ye `{}` gönderimi HTTP 400. QA `down` ardından `up -d --no-build`: kayıt sayısı 1 ve aynı UUID kaldı; migration tekrar çalıştırılabilirliği ve volume kalıcılığı doğrulandı.
+- Yalnız QA'da migration entrypoint'i geçici `exit 42` ile değiştirilerek hata simüle edildi: Compose beklenen exit 1 verdi; migrate Exited (42), app yalnız Created kaldı ve başlatılmadı. Bu beklenen negatif testtir; gerçek build veya migration hatası yaşanmadı.
+- UI kanıtı repository dışında `flowpilot-docker/compose-form-success.png` olarak kaydedildi. Geçici QA container/network/volume ve override dosyaları kontrol sonunda kaldırıldı; ana app/PostgreSQL çalışır bırakıldı.
+
+### Kapsam ve sonraya bırakılanlar
+
+Ürün kodu, endpoint, form veya model değişmedi; yeni migration yok. Mevcut 33/47 test suite bu altyapı değişikliği için yeniden çalıştırılmadı; bu görevdeki kanıt container build ve gerçek HTTP/browser/PostgreSQL smoke testleridir. AMD64 çalıştırma, CI'da Docker build job'u, public HTTPS hosting ve canlı production DB bu çalışmada doğrulanmadı. Bu yapı yerel Compose çalıştırmasıdır; Sprint 7 canlı teslim maddelerini tamamlanmış saymaz.
