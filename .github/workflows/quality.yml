@@ -1,0 +1,71 @@
+name: Quality checks
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Frontend and backend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      DOTNET_NOLOGO: 'true'
+      DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: client
+        run: npm ci
+
+      - name: Frontend typecheck
+        working-directory: client
+        run: npm run typecheck
+
+      - name: Frontend tests
+        working-directory: client
+        run: npm test
+
+      - name: Frontend production build
+        working-directory: client
+        run: npm run build
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+          dotnet-quality: ga
+          cache: true
+          cache-dependency-path: '**/packages.lock.json'
+
+      - name: Check Docker for Testcontainers
+        run: docker info
+
+      - name: Backend restore
+        run: dotnet restore FlowPilot.slnx --locked-mode
+
+      - name: Backend build
+        run: dotnet build FlowPilot.slnx --configuration Release --no-restore
+
+      - name: Backend tests with real PostgreSQL
+        run: dotnet test --solution FlowPilot.slnx --configuration Release --no-build --no-restore
