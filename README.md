@@ -145,7 +145,7 @@ Microsoft Testing Platform için `--solution` kullanılır. Testcontainers, ayr�
 
 Sprint 7 yerel sonuçları: **33 frontend / 47 backend**, 0 failed/0 skipped; typecheck, build, publish ve paket üretimi başarılı; backend 0 warning/0 error. Mevcut 42 backend testine dört static-hosting/404 kontrolü ve mevcut güvenli-500 testinin Production varyantı eklendi. Migration ve ürün sözleşmesi değişmedi.
 
-[Quality checks](.github/workflows/quality.yml): main hedefli PR ve main push; npm install/typecheck/test/build, .NET locked restore/Release build/gerçek PostgreSQL testleri, same-origin production paket üretimi. Deploy yapmaz. Güncel run bağlantısı PR ve AI_LOG'da kaydedilir.
+[Quality checks](.github/workflows/quality.yml): main hedefli PR ve main push; npm install/typecheck/test/build, .NET locked restore/Release build/gerçek PostgreSQL testleri, same-origin production paket üretimi. Deploy yapmaz. [İlk final branch CI run](https://github.com/mberatkaya/flowpilot/actions/runs/37638405334) SUCCESS: 33/47 test ve production paket üretimi. Son head sonucu PR kontrolünde görülür.
 
 ## Validation / result behavior
 
@@ -186,7 +186,7 @@ Codex ile yürütülen Sprint 1–7 görevleri, gerçek kararlar/hatalar ve doğ
 
 ## Delivery
 
-Source repository: [mberatkaya/flowpilot](https://github.com/mberatkaya/flowpilot) (private; yetkili GitHub erişimi gerekir).
+Source repository: [mberatkaya/flowpilot](https://github.com/mberatkaya/flowpilot) (private; yetkili GitHub erişimi gerekir). Final inceleme: [PR #6](https://github.com/mberatkaya/flowpilot/pull/6), OPEN / NOT MERGED.
 
 Live URL: **yok — hosting hedefi bekliyor**.
 
