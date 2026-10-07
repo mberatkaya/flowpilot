@@ -168,3 +168,59 @@ Gerçek PostgreSQL 16.14/Testcontainers kullanıldı; fake/in-memory provider yo
 Frontend dosyaları, landing page, UI durumları, form entegrasyonu, authentication/admin/deployment/rate limiting ve yeni ürün özellikleri geliştirilmedi. Üretim ortamı/yük testleri ve e-posta teslim edilebilirliği bu validation testleriyle kanıtlanmaz. Sonraki sprintin frontend işi başlatılmadı.
 
 Teslim commit mesajı ve PR başlığı: `feat: add request validation and error handling`. Son diff incelemesinden sonra restore/build/test tekrar çalıştırıldı; 0 uyarı/0 hata ve 42 başarılı test sonucu korundu. Client ve migration dosyalarının diff'i boştu. Çalışma branch'i push edilip `main` hedefli PR açılacak; PR inceleme için OPEN/NOT MERGED bırakılacak. Commit SHA ve PR URL'si final raporda verilecek.
+
+## 2026-10-07 — Sprint 4: landing page ve responsive UI
+
+### Araç, görev ve branch
+
+- Araç: Codex; Git/npm CLI, dosya patch aracı ve Codex uygulama içi tarayıcısında CUA ile kontrol kullanıldı. Alt ajan kullanılmadı.
+- Görev: FlowPilot için Türkçe, mobil/desktop uyumlu ve erişilebilir hizmet landing page'i; yalnızca görsel/client form yapısı; testler, dokümantasyon ve merge edilmeyecek PR.
+- Başlangıç çalışma ağacı temizdi. Sprint 3 PR #2 `MERGED` olarak doğrulandı. Fetch ve fast-forward ile `main` commit'i `76378f7` alındı; Sprint 3 commit'i `a767451` bunun ancestor'ıydı. Güncel `main` üzerinden `feature/sprint-4-landing-page` oluşturuldu.
+
+### İçerik sırası ve tasarım yaklaşımı
+
+- Header → hero/primary CTA → dört hizmet → üç çalışma adımı → talep formu → kısa footer. Ürünün ne yaptığı, kimlere yardımcı olduğu, çözdüğü tekrarlar ve çalışma biçimi bu sırayla anlatılır; ek pazarlama bölümü veya doğrulanamayacak iddia eklenmedi.
+- Açık tema, beyaz/açık nötr yüzeyler, koyu yeşil vurgu, sistem fontları ve kontrollü whitespace seçildi. Native CSS Grid/Flex ve media query kullanıldı; template, UI kit, Tailwind veya yeni bağımlılık eklenmedi.
+- Hero'daki örnek akış yerel HTML/CSS, ikonlar yerel SVG ile oluşturuldu; dış görsel/font kaynağı yoktur.
+- Hizmet açıklamaları ve Türkçe option label'ları aynı `services.ts` kaynağından gelir. Dört service value backend ile aynıdır; backend dosyaları değiştirilmedi.
+- Form, uncontrolled native alanlar ve label'lardan oluşur. Gönderim kapalı bilgisi görünürdür; submit düğmesi disabled'dır ve native submit yalnızca preventDefault ile engellenir. API isteği, gerçek submit, local/session storage, success/loading/error UI eklenmedi.
+
+### Accessibility kararları
+
+- Semantic header/nav/main/section/article/footer; tek h1 ve h2/h3 sırası; aria-labelledby ile isimli section'lar; gerçek label/input bağlantıları.
+- Skip link ve focusable anchor hedefleri; link navigasyonu ile buton ayrımı; klavye :focus-visible için 3 px belirgin mavi outline. Klavyeyle isim alanından e-posta alanına geçiş tarayıcıda doğrulandı.
+- Form name/email autocomplete, e-posta type'ı, native required/minLength/maxLength ve açıklama hint'i kullanıldı. Disabled gönderim düğmesi, görünür açıklamaya aria-describedby ile bağlandı.
+- Hero çizimi, ikonlar ve yardımcı oklar aria-hidden; screen reader ağacında dekoratif akış düğümleri görünmez. prefers-reduced-motion CSS kuralı smooth scroll ve CTA transition'ını kapatır; kuralın tarayıcı stylesheet'inde bulunduğu kontrol edildi.
+- CTA 52 px, navigasyon linkleri 44 px, form input/select'leri 48–52 px yüksekliktedir; form font'u 16 px'tir.
+- Renk hesabı: ana metin/beyaz 14.40:1, muted/açık yüzey 5.89:1, beyaz/CTA yeşili 6.91:1, placeholder/beyaz 4.81:1, input sınırı/beyaz 3.30:1, focus/beyaz 5.46:1. Input border daha belirgin renge alındı.
+
+### Responsive ve tarayıcı doğrulamaları
+
+| Viewport | Kontrol sonucu |
+| --- | --- |
+| 320×800 | Görsel mobil hero/form kontrolü; document width 320, yatay taşma yok; alan genişliği 242 px |
+| 390×844 | DOM yerleşim ölçümü; document width 390; nav linkleri 44 px ve CTA 52 px |
+| 430×932 | Görsel mobil form/focus/disabled düğme kontrolü; document width 430; alan genişliği 352 px |
+| 768×1024 | Görsel tablet hero ve form ölçümü; document width 768; iki hizmet sütunu; düzeltilmiş formda isim/e-posta 312 px, select/textarea 642 px |
+| 1440×1000 | Görsel desktop hero/form; document width 1440; form 559 px, isim/e-posta yaklaşık 240 px |
+
+CTA gerçek anchor tıklamasıyla `#talep-formu` hedefini açtı; smooth scroll tamamlandığında section üstü viewport'ta yaklaşık 24 px idi. Keyboard focus e-posta alanında :focus-visible/solid outline olarak görüldü. Browser console error/warn listesi boştu. Geçici viewport override'ı kontrol sonunda reset edildi. Desktop/mobil screenshot'ları repository dışında Codex visualizations dizinine kaydedildi; credential veya gerçek kullanıcı verisi içermez.
+
+### Test ve build kontrolleri
+
+- `npm ci`: başarılı; yeni paket eklenmedi, bildirilen güvenlik açığı yok.
+- `npm run typecheck`: başarılı.
+- `npm test`: 8 frontend testi geçti. Heading/landmark, dört hizmet, anchor hedefleri, gerçek label'lar, dört service option value, sıralı adımlar, kapalı gönderim ve skip link kanıtlandı. API mock testi yoktur.
+- `npm run build`: TypeScript + Vite production build başarılı.
+- `npm run dev`: 127.0.0.1:5173 üzerinde tarayıcıda kontrol edildi; backend'e ihtiyaç duymadı.
+- Son diff incelemesinden sonra `npm run typecheck`, `npm test` ve `npm run build` tekrar çalıştırıldı; tümü başarılı ve 8 test geçti. `server/` ve backend testleri bu sprintte çalışılmadı/değiştirilmedi.
+
+### Gerçek düzeltmeler / değiştirilmiş öneriler
+
+İlk test çalıştırmasında üç bölüm adı bulunamadı: JSX'te `<br>` çevresinde boşluk olmadığı için jsdom erişilebilir adı kelimeleri bitişik okuyordu. Başlıklara açık boşluk eklenerek düzeltildi; sonraki 8 test geçti. Tablet formu ilk yerleşimde yaklaşık 140 px input genişliği verdi; tarayıcı ölçümüne dayanarak form bölümü 900 px altında tek sütuna alındı ve 768 px'te 312 px input genişliği doğrulandı. Reddedilmiş ayrı bir AI önerisi yoktur; başka hata uydurulmadı.
+
+### Kapsam ve teslim
+
+Backend/API, backend testleri ve migration'lar korundu. Fetch/axios/API entegrasyonu, gerçek gönderim, loading/success/backend error UI, authentication, admin, analytics, cookie banner, chatbot, pricing, deployment ve gereksiz animasyon eklenmedi. Fiziksel mobil cihaz ve kapsamlı assistive technology denetimi yapılmadı; test edilenler tarayıcı viewport'ları, accessibility tree ve klavye davranışlarıdır.
+
+Teslim commit mesajı ve PR başlığı: `feat: build responsive FlowPilot landing page`. Çalışma branch'i push edilip `main` hedefli PR açılacak ve OPEN/NOT MERGED bırakılacak. Sprint 5 form/API entegrasyonuna geçilmeyecek. Commit SHA ve PR URL'si final raporda verilecek.
