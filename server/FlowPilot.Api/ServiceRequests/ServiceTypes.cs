@@ -9,7 +9,7 @@ public static class ServiceTypes
     public const string DataReporting = "data-reporting";
     public const string CustomSoftware = "custom-software";
 
-    // Sprint 3 validation will use this single source of supported values.
+    // Shared source of accepted values for server-side validation.
     public static IReadOnlySet<string> Supported { get; } = new[]
     {
         WorkflowAutomation, SystemIntegration, DataReporting, CustomSoftware

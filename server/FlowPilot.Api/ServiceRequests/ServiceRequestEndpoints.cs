@@ -6,7 +6,9 @@ public static class ServiceRequestEndpoints
 {
     public static IEndpointRouteBuilder MapServiceRequestEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapPost("/api/requests", CreateAsync);
+        endpoints.MapPost("/api/requests", CreateAsync)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status500InternalServerError);
         return endpoints;
     }
 

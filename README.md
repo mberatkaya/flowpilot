@@ -2,6 +2,8 @@
 
 İlk milestone'un amacı, kararları ve doğrulama kaydı aşağıda korunmuştur. **Güncel backend kurulumu ve çalışma durumu için bu dosyanın sonundaki “Sprint 2 — API ve PostgreSQL persistence” bölümünü kullanın.** İlk milestone'daki “veritabanı gerekli değil / endpoint yok / commit atılmadı” ifadeleri yalnızca o aşamaya aittir.
 
+Sprint 2 bölümü PostgreSQL kurulum rehberi olarak geçerlidir; **güncel validation ve HTTP sözleşmesi en alttaki Sprint 3 bölümündedir**. Önceki sprintlerde sonraya bırakılmış olarak yazılan validation işleri artık tamamlandı.
+
 ## Projenin amacı
 
 FlowPilot, küçük işletmelerin tekrar eden operasyonel süreçlerini otomatikleştirmesine yardımcı olan kurgusal bir teknoloji hizmetidir. Teknik değerlendirme projesinin nihai hedefi, mobil ve masaüstü uyumlu bir landing page üzerinden hizmet taleplerini toplamak ve PostgreSQL üzerinde kalıcı olarak saklamaktır.
@@ -244,3 +246,57 @@ main (ilk milestone: 0f8c2d4)
 - Sprint 2 PR'ı inceleme için açık bırakılacak; kullanıcı incelemeden merge edilmeyecek.
 
 Sprint 3'e bırakılanlar: server-side validasyon, ayrıntılı hata yönetimi ve ilgili testler. Frontend entegrasyonu, landing page, authentication/authorization, admin paneli, rate limiting, e-posta ve deployment geliştirilmedi.
+
+## Sprint 3 — Server-side validation ve hata davranışı
+
+Sprint 2 PR #1'in `main` içine merge edildiği doğrulandı. Çalışma branch'i `feature/sprint-3-validation-error-handling`; frontend değişmedi. Mevcut EF Core/PostgreSQL kayıt akışı korunur ve validation, endpoint handler'ı çalışmadan önce tamamlanır.
+
+### Validation kuralları
+
+| Alan | Kural |
+| --- | --- |
+| `name` | Zorunlu; trim sonrası whitespace/boş değer reddedilir; en fazla 200 karakter |
+| `email` | Zorunlu; trim sonrası .NET `EmailAddress` format kontrolü; en fazla 320 karakter |
+| `serviceType` | Tam olarak `workflow-automation`, `system-integration`, `data-reporting` veya `custom-software` |
+| `description` | Zorunlu; trim sonrası 10–4000 karakter; whitespace/boş değer reddedilir |
+
+Eksik ve `null` alanlar da reddedilir. ServiceType karşılaştırması case-sensitive'dir; çevresindeki whitespace kabul edilmez. Name, Email ve Description kenar boşlukları temizlenerek saklanır; e-posta harfleri ve alanların içindeki boşluklar değiştirilmez. Uzunluklar .NET string uzunluğuyla, trim sonrasında hesaplanır.
+
+Maksimumlar mevcut PostgreSQL şemasıyla aynı tutuldu; 10 karakterlik açıklama minimumu, talebin kısa da olsa anlamlı bir açıklama içermesi için seçildi. Kurallar DTO üzerindeki DataAnnotations, `ServiceRequestLimits` sabitleri ve mevcut `ServiceTypes.Supported` allowlist'inden gelir. Yeni migration veya validation kütüphanesi eklenmedi.
+
+### HTTP sözleşmesi
+
+- **201 Created:** Geçerli kayıt PostgreSQL'e yazıldıktan sonra `id` ve sunucu UTC `createdAt` değeri döner.
+- **400 Bad Request:** Alan validasyonu başarısızsa `application/problem+json` ve camelCase alan anahtarları altında mesaj dizileri döner. Geçersiz istek DB'ye yazılmaz. Boş/bozuk JSON, JSON `null` gövde ve yanlış JSON alan tipleri de `400` döner; bind edilemeyen gövde için genel ProblemDetails kullanılır.
+- **500 Internal Server Error:** Beklenmeyen persistence hatası genel ProblemDetails yanıtı üretir; başarı bilgisi, exception mesajı, stack trace veya connection string içermez. Bu davranış Development ortamında da geçerlidir.
+
+Alan validasyonu örneği (diğer ProblemDetails metadata alanları da bulunabilir):
+
+```json
+{
+  "title": "Validation failed.",
+  "status": 400,
+  "instance": "/api/requests",
+  "errors": {
+    "name": ["Name is required."],
+    "email": ["Email must be a valid email address."]
+  }
+}
+```
+
+JSON gövdesi okunamadığında `title` değeri `Bad request.` olur. `500` için `title` değeri `An unexpected error occurred.`, `detail` değeri `The request could not be completed. Please try again later.` olur. Validation mesajlarına girilen değerler geri yansıtılmaz. Client'ın gönderdiği `id` ve `createdAt` DTO'da yoktur; yok sayılır ve sunucunun ürettiği değerlerin yerine geçmez.
+
+### Doğrulama
+
+Sprint 2'deki kurulum ve test komutları aynıdır:
+
+```sh
+dotnet restore FlowPilot.slnx --locked-mode
+dotnet build FlowPilot.slnx --no-restore
+dotnet test --solution FlowPilot.slnx --no-build --no-restore
+dotnet ef migrations has-pending-model-changes --project server/FlowPilot.Api
+```
+
+Gerçek PostgreSQL/Testcontainers ile 42 test geçti: geçerli kayıt ve alanların trim edilmesi; dört hizmet tipinin kabulü; eksik/null/boş/whitespace ve uzunluk sınırları; alan bazlı hata sözleşmesi; tüm geçersiz isteklerde bağımsız SQL sorgularıyla kayıt sayısının değişmediği; client Id/CreatedAt değerlerinin yok sayılması; güvenli `500` yanıtı. Migration modelinde değişiklik yoktur. Fake/in-memory provider kullanılmadı.
+
+Sprint 3 PR'ı inceleme için açık bırakılır; merge edilmez. Sonraki sprintin landing page/frontend işi bu sprintte başlatılmadı.
