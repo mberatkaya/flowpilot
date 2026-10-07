@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/server/">
+    <Project Path="server/FlowPilot.Api/FlowPilot.Api.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/FlowPilot.Api.Tests/FlowPilot.Api.Tests.csproj" />
+  </Folder>
+</Solution>
