@@ -311,7 +311,7 @@ Teslim commit mesajı ve PR başlığı: `feat: connect service request form to 
 - Production host allowlist varsayılanı yerel adreslerle sınırlıydı; environment override zaten destekleniyordu fakat örnek belirsizdi. Root `.env.example` içine secret içermeyen yorumlu Production/ASPNETCORE_URLS/AllowedHosts/connection string referansı eklendi; README deployment'ta override, HTTPS ve routing gereksinimlerini açıklar. Host koruması gevşetilmedi.
 - Ürün kodunda bu kontrollerle kanıtlanan eksik/hatalı davranış bulunmadı. API/frontend/model/migration ve mevcut test kaynakları değiştirilmedi. Güvenilir negatif testler zaten vardı; test sayısını artırmak için tekrar test yazılmadı.
 
-Resmi kaynaklar: [Actions setup-node](https://github.com/actions/setup-node), [setup-dotnet](https://github.com/actions/setup-dotnet), [checkout](https://github.com/actions/checkout), [Testcontainers CI](https://dotnet.testcontainers.org/cicd/). Runner Docker'ı kullanılabilir olduğunda Testcontainers ek DB fallback gerektirmez; gerçek remote run sonucu ayrıca aşağıda kaydedilecektir.
+Resmi kaynaklar: [Actions setup-node](https://github.com/actions/setup-node), [setup-dotnet](https://github.com/actions/setup-dotnet), [checkout](https://github.com/actions/checkout), [Testcontainers CI](https://dotnet.testcontainers.org/cicd/). Runner Docker'ı kullanılabilir olduğunda Testcontainers ek DB fallback gerektirmez; gerçek remote run sonucu aşağıda kaydedilmiştir.
 
 ### Yerel test/build ve configuration doğrulamaları
 
@@ -401,4 +401,10 @@ Yeni ürün özelliği, UI redesign, auth/admin/analytics/mail/dashboard/deploym
 
 ### Remote CI ve teslim
 
-Yerel kalite kontrolleri tamamlandı. Workflow commit/push ve main hedefli PR'dan sonra gerçek GitHub Actions sonucu incelenecek; run sonucu veya root cause/minimum düzeltme bu bölüme eklenecek. PR merge edilmeyecek, Sprint 7'ye geçilmeyecek.
+Ana commit `c9a0cca644cf19385b96ae963379982cdb31a9c0`, mesajı `ci: add automated quality checks`; branch push edildi ve [PR #5](https://github.com/mberatkaya/flowpilot/pull/5) main hedefli açıldı. PR OPEN / NOT MERGED bırakılır.
+
+İlk gerçek [GitHub Actions run 37625039548](https://github.com/mberatkaya/flowpilot/actions/runs/37625039548), pull_request event'i ve `c9a0cca` head'i için **SUCCESS** (job süresi 1 dakika 2 saniye). Loglar indirildi ve adım sonuçları incelendi: npm ci/typecheck/test/build başarılı, 33 frontend testi; locked restore/Release build başarılı, 0 Warning(s)/0 Error(s); gerçek PostgreSQL/Testcontainers ile 42 backend testi, 0 başarısız/0 atlanan. Runner Node 24.21.0 kullandı. Testler/devam koşulları değiştirilmedi; ilk run başarısız olmadığı için root cause veya retry hikâyesi uydurulmadı.
+
+Checkout logundaki git-init varsayılan branch adı hint'i uygulama/derleyici warning'i değildir; derleme warning sayısı 0. Test/build/cache adımlarının tamamı başarılıdır. CI workflow'u değişmeden sonucu kayda geçirmek için yalnızca AI_LOG/README/PR dokümantasyon güncellemesi yapılır; bu commit'in PR kontrolü de tamamlanana kadar izlenir. Main push tetiği workflow'da tanımlıdır; PR merge edilmediğinden bu sprintte main push run'ı çalıştırılmaz.
+
+Geçici QA dosyaları kaldırıldı; API/Vite/PostgreSQL kontrol süreçleri durduruldu, local volume korundu. Ürün/test/migration ve dependency diff'leri boş kaldı. Sprint 7 deployment/final teslim işine geçilmedi.

@@ -203,7 +203,7 @@ dotnet ef migrations has-pending-model-changes --project server/FlowPilot.Api
 | Deployment'a hazır configuration | Public API root ve secret/environment override'ları; yayın Sprint 7 |
 | CI | GitHub Actions PR ve main kalite kontrolleri |
 
-Yerel Sprint 6 sonuçları: **33 frontend testi**, **42 backend testi**, production frontend build ve Release backend build başarılı; backend **0 warning / 0 error**. Manuel browser → API → PostgreSQL regresyonunda tamamen kurgusal `Final QA Test` / `final-qa@example.com` / `system-integration` kaydı doğrulandı. Accessibility ve remote CI'ın ayrıntılı sonuçları/run bağlantıları AI_LOG Sprint 6 kaydındadır.
+Yerel Sprint 6 sonuçları: **33 frontend testi**, **42 backend testi**, production frontend build ve Release backend build başarılı; backend **0 warning / 0 error**. Manuel browser → API → PostgreSQL regresyonunda tamamen kurgusal `Final QA Test` / `final-qa@example.com` / `system-integration` kaydı doğrulandı. Accessibility ve remote CI'ın ayrıntılı sonuçları AI_LOG Sprint 6 kaydındadır. [İlk remote CI run](https://github.com/mberatkaya/flowpilot/actions/runs/37625039548) SUCCESS: 33 frontend / 42 backend testi, 0 backend warning/error.
 
 ## Bilinen eksikler ve kapsam
 
