@@ -224,3 +224,73 @@ CTA gerçek anchor tıklamasıyla `#talep-formu` hedefini açtı; smooth scroll 
 Backend/API, backend testleri ve migration'lar korundu. Fetch/axios/API entegrasyonu, gerçek gönderim, loading/success/backend error UI, authentication, admin, analytics, cookie banner, chatbot, pricing, deployment ve gereksiz animasyon eklenmedi. Fiziksel mobil cihaz ve kapsamlı assistive technology denetimi yapılmadı; test edilenler tarayıcı viewport'ları, accessibility tree ve klavye davranışlarıdır.
 
 Teslim commit mesajı ve PR başlığı: `feat: build responsive FlowPilot landing page`. Çalışma branch'i push edilip `main` hedefli PR açılacak ve OPEN/NOT MERGED bırakılacak. Sprint 5 form/API entegrasyonuna geçilmeyecek. Commit SHA ve PR URL'si final raporda verilecek.
+
+## 2026-10-07 — Sprint 5: form/API entegrasyonu
+
+### Araç, görev ve branch
+
+- Araç: Codex; Git/npm/.NET/Docker/gh CLI, patch ve uygulama içi browser CUA araçları kullanıldı. Resmi React input ve Vite environment/proxy belgeleri incelendi; alt ajan kullanılmadı.
+- Görev: Mevcut landing page formunu gerçek `POST /api/requests` API'sine bağlamak; client validation/state/error UX, frontend testleri, backend regresyonu ve gerçek browser → API → PostgreSQL E2E doğrulaması; commit/push ve merge edilmeyecek PR.
+- Sprint 4 PR #3 `MERGED` olarak doğrulandı. Güncel `main` commit'i `a0a9906` alındı; Sprint 4 commit'i `2a5e10f` ancestor kontrolü geçti. Çalışma branch'i `feature/sprint-5-form-api-integration`.
+
+### Client/server validation ayrımı ve teknik kararlar
+
+- Client sadece UX için isim/e-posta/açıklama trim, zorunluluk/whitespace ve uzunluk kontrolleri yapar. İsim 200, e-posta 320, açıklama 10–4000 karakter; e-posta temel format kontrolü; ServiceType mevcut dört value ile tam eşleşir.
+- Server validation ve PostgreSQL persistence esas kaynaktır; backend sözleşmesi/kaynakları/testleri/migration'ları değiştirilmedi. Yeni dependency veya state kütüphanesi eklenmedi.
+- API çağrısı native fetch ile küçük `requestApi.ts` modülündedir. `VITE_API_BASE_URL`, /api dahil API köküdür; varsayılan ve örnek `/api`. Development'ta Vite `/api` proxy'si `API_PROXY_TARGET` ile localhost:5080'e iletir. Component'te host hard-code edilmedi. Production same-origin yönlendirme gerektirir; ayrı origin için tam API kökü ve trusted CORS gereksinimi README'de açıklandı. Deployment/CORS değişikliği yapılmadı.
+- Request payload yalnızca dört form alanıdır. Backend Id/CreatedAt üretimi aynen korunur.
+
+### Form state ve başarı/hata yaklaşımı
+
+- React state ile idle/submitting/success/validation-error/server-error; controlled form alanları ve tek pending request için ref koruması kullanıldı. Pending sırasında alanlar/düğme disabled; kullanıcı değerleri değiştirip yanıt gelince yanlışlıkla kaybetmez.
+- Başarı ve form temizleme yalnızca response.status === 201 dalında yapılır. Fetch resolve/response.ok/200/204 client validation başarısı yeterli sayılmaz.
+- 400 body unknown olarak parse edilir; sadece bilinen alanlar ve string array şekli kabul edilir. Backend metinleri gösterilmez, yerel Türkçe alan mesajları kullanılır. Bozuk/bilinmeyen body genel hata alanına düşer.
+- 500/diğer beklenmeyen response veya fetch exception statik genel mesaj üretir; değerler korunur, düğme yeniden açılır. Otomatik retry yoktur.
+- Input hataları aria-invalid/describedby; error alert ve loading/success polite status region. aria-busy yalnızca pending alan grubundadır, live region dışında bırakıldı. Hata üretildiğinde ilk hatalı input/genel summary focus alır; düzenleme sırasında focus yerinde kalır.
+
+### Frontend ve backend doğrulamaları
+
+| Komut | Sonuç |
+| --- | --- |
+| `npm ci` (client/) | Başarılı; yeni paket/güvenlik açığı bildirimi yok |
+| `npm run typecheck` | Başarılı |
+| `npm test` | 33 frontend testi geçti |
+| `npm run build` | TypeScript/Vite production build başarılı |
+| `dotnet restore FlowPilot.slnx --locked-mode` | Başarılı |
+| `dotnet build FlowPilot.slnx --no-restore` | 0 uyarı, 0 hata |
+| `dotnet test --solution FlowPilot.slnx --no-build --no-restore` | 42 geçti, 0 başarısız, 0 atlanan; gerçek PostgreSQL/Testcontainers |
+| `dotnet ef database update --project server/FlowPilot.Api` | Mevcut yerel DB günceldi; yeni migration yok |
+
+Frontend API çağrıları component testlerinde mocklandı; gerçek entegrasyon olarak raporlanmaz. Testler invalid input → sıfır API çağrısı, pending loading/disabled/duplicate guard, 201 sonrası mesaj/temizleme, yalnız 201'in başarı sayılması, trim ve exact service value/configured URL, güvenli 400 eşlemesi/fallback, 500/network sonrası değerlerin korunması, retry ve focus davranışını kanıtlar.
+
+### Gerçek manuel E2E ve bağımsız PostgreSQL kontrolü
+
+Gerçek PostgreSQL 16.14 Compose, ASP.NET Core API localhost:5080 ve React/Vite 127.0.0.1:5173 birlikte çalıştırıldı. Form CUA ile browser üzerinden dolduruldu; fixture/fetch mock'u kullanılmadı.
+
+Kurgusal payload:
+
+```text
+Name: Sprint Five Test
+Email: sprint5@example.com
+Service: workflow-automation
+Description: This is a fictional request created for the FlowPilot technical evaluation.
+```
+
+1. Bağımsız SQL ile bu e-postanın başlangıç kayıt sayısı 0 görüldü.
+2. Ayrı psql transaction'ında ServiceRequests için geçici SHARE lock alındı; bu yalnızca kontrol sırasında INSERT'i bekletti, ürün koduna delay eklenmedi.
+3. Browser formu gönderdi. Buton “Gönderiliyor...”/disabled, alanlar disabled, status “Talebiniz gönderiliyor.” idi; başarı mesajı yoktu.
+4. Lock COMMIT ile bırakıldı. Geçici hosting diagnostic log ayarı, browser kaynaklı POST'un HTTP 201 ile tamamlandığını gösterdi (~6.9 sn; DB beklemesi dahil). Bu log ayarı kaynak koda/repo configuration'a eklenmedi.
+5. Browser'da gerçek başarı mesajı görüldü ve dört alan temizlendi.
+6. Bağımsız `docker compose exec ... psql SELECT` sorgusunda kayıt tüm alanlarıyla bulundu: ID `2e0890f6-73c6-4134-ab6a-2734cbc74db4`, CreatedAt `2026-10-07T12:27:04.183473+00:00`. UI mesajından DB kaydı varsayılmadı.
+7. API process'i kapatıldı ve aynı kurgusal değerler browser formundan tekrar gönderildi. Vite proxy ECONNREFUSED/500 hata yolu oluştu. UI genel hata mesajı gösterdi, success region boş kaldı, değerler korundu ve düğme enabled oldu; error summary focus aldı.
+8. Bağımsız SQL ile kayıt sayısı hâlâ 1 idi; hata denemesi yeni kayıt oluşturmadı. DB volume ve bu kurgusal kayıt korundu; kontrol için açılan process'ler durduruldu.
+
+Desktop feedback görüntüleri repository dışında Codex visualizations dizinine kaydedildi. 320×800 hata state'inde document width 320 ölçüldü; yatay taşma yoktu. Geçici browser viewport override'ı reset edildi. Native hizmet seçimi value'su workflow-automation olarak doğrulandı.
+
+### Gerçek hata/düzeltmeler ve sınırlar
+
+İlk `npm ci` yanlışlıkla repository kökünde çalıştırıldığı için lockfile bulunamadı; doğru `client/` dizininde tekrar çalıştırılıp başarılı oldu. Kod incelemesinde focus'u her error state düzenlemesinde yeniden taşıyan yaklaşım değiştirildi: focus yalnızca yeni hata üretilirken tetiklenir; düzeltme sırasında yerinde kalması test edildi. API kapatıldığındaki ECONNREFUSED, planlanan hata senaryosuydu; giderilmemiş ürün hatası olarak sunulmaz. Reddedilmemiş bir AI önerisi için “reddettim” kaydı oluşturulmadı.
+
+Backend ve landing page tasarımı korunur; auth/admin/analytics/e-posta/rate limiting/dashboard/deployment veya yeni backend feature eklenmedi. Manuel E2E, otomatik CI browser testi değildir. Production hosting, ayrı-origin CORS, fiziksel cihaz/screen reader audit'i ve ağın yanıt vermeden uzun süre beklediği durumlar bu sprintte ayrıca doğrulanmadı.
+
+Teslim commit mesajı ve PR başlığı: `feat: connect service request form to API`. Son diff incelemesi sonrası typecheck/test/build tekrar başarılı oldu; 33 frontend testi sonucu korundu. Backend kaynakları/testleri ve package manifest/lock diff'leri boştu. Branch push edilip `main` hedefli PR açılacak ve OPEN/NOT MERGED bırakılacak. Sprint 6 CI/final kalite/deployment işine geçilmeyecek; commit SHA ve PR URL'si final raporda verilecek.
