@@ -51,6 +51,15 @@ var app = builder.Build();
 // Database failures reach the standard 500 handler; they never become a 201 response.
 app.UseExceptionHandler();
 app.UseStatusCodePages();
+
+// The production package contains the React build in wwwroot. Development uses Vite.
+// Keep unknown API routes as 404; this landing page does not need an SPA fallback.
+if (Directory.Exists(app.Environment.WebRootPath))
+{
+    app.UseDefaultFiles();
+    app.UseStaticFiles();
+}
+
 app.MapServiceRequestEndpoints();
 
 app.Run();
