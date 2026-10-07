@@ -1,172 +1,72 @@
 # FlowPilot
 
-İlk milestone'un amacı, kararları ve doğrulama kaydı aşağıda korunmuştur. **Güncel backend kurulumu ve çalışma durumu için bu dosyanın sonundaki “Sprint 2 — API ve PostgreSQL persistence” bölümünü kullanın.** İlk milestone'daki “veritabanı gerekli değil / endpoint yok / commit atılmadı” ifadeleri yalnızca o aşamaya aittir.
+FlowPilot, küçük işletmelerin tekrar eden operasyonel süreçlerini otomatikleştirmesine yardımcı olan kurgusal bir teknoloji hizmetidir. Mobil ve masaüstü uyumlu landing page; isim, e-posta, hizmet seçimi ve açıklama içeren form üzerinden talep toplar. Geçerli talepler gerçek ASP.NET Core API aracılığıyla PostgreSQL'e kalıcı olarak yazılır.
 
-Sprint 2 bölümü PostgreSQL kurulum rehberi olarak geçerlidir; **güncel validation ve HTTP sözleşmesi en alttaki Sprint 3 bölümündedir**. Önceki sprintlerde sonraya bırakılmış olarak yazılan validation işleri artık tamamlandı.
+Bu README **Sprint 6 itibarıyla güncel kurulum rehberidir**. Sprint 1–6 kararları, tarihsel test sonuçları ve karşılaşılan hatalar [AI_LOG.md](AI_LOG.md) içindedir. Henüz canlı URL yoktur; deployment Sprint 7'ye bırakılmıştır.
 
-Landing page'in güncel durumu ve frontend doğrulamaları Sprint 4 bölümündedir. Backend/API sözleşmesi Sprint 3'teki haliyle korunur.
+## Teknolojiler ve mimari
 
-Form artık gerçek API'ye bağlıdır; birlikte çalıştırma ve güncel form davranışı Sprint 5 bölümündedir. Sprint 4'teki kapalı gönderim açıklaması yalnızca o milestone'a aittir.
-
-## Projenin amacı
-
-FlowPilot, küçük işletmelerin tekrar eden operasyonel süreçlerini otomatikleştirmesine yardımcı olan kurgusal bir teknoloji hizmetidir. Teknik değerlendirme projesinin nihai hedefi, mobil ve masaüstü uyumlu bir landing page üzerinden hizmet taleplerini toplamak ve PostgreSQL üzerinde kalıcı olarak saklamaktır.
-
-Talep formunda isim, e-posta, hizmet seçimi ve açıklama alanları bulunacak. Bu ilk aşama yalnızca çalıştırılabilir proje ve test iskeletini kapsar.
-
-## Kullanılan teknolojiler
-
-| Alan | Teknoloji | Bu aşamadaki durum |
-| --- | --- | --- |
-| Frontend | React, TypeScript, Vite | Minimal başlangıç ekranı ve build altyapısı |
-| Backend | C#, ASP.NET Core Web API, .NET 10 LTS | Endpoint içermeyen uygulama host'u |
-| Veritabanı | PostgreSQL, Entity Framework Core | Planlandı; paket, bağlantı, DbContext ve migration eklenmedi |
-| Frontend testleri | Vitest, React Testing Library, jsdom | Test kurulumu ve bir smoke testi |
-| Backend testleri | xUnit v3, ASP.NET Core MVC Testing | Test projesi ve host başlangıç testi |
-
-## Temel mimari
+| Alan | Teknoloji |
+| --- | --- |
+| Frontend | React 19, TypeScript, Vite; elle yazılmış CSS, template/UI kit yok |
+| Backend | C#, ASP.NET Core Web API, .NET 10; Minimal API |
+| Persistence | Entity Framework Core 10, Npgsql, PostgreSQL 16 |
+| Frontend testleri | Vitest, React Testing Library, jsdom |
+| Backend testleri | xUnit v3, Microsoft Testing Platform, WebApplicationFactory, Testcontainers |
+| CI | GitHub Actions; tek Ubuntu job'u |
 
 ```text
 flowpilot/
-├── client/
-│   ├── src/                  # React bileşenleri, yanlarında frontend testleri
-│   │   └── test/setup.ts     # Ortak test kurulumu
-│   ├── .env.example          # Tarayıcıya açık, örnek frontend ayarı
-│   ├── package.json
-│   ├── package-lock.json
-│   ├── tsconfig.json
-│   └── vite.config.ts
-├── server/
-│   └── FlowPilot.Api/        # Tek ASP.NET Core host projesi
-├── tests/
-│   └── FlowPilot.Api.Tests/  # Backend xUnit test projesi
-├── FlowPilot.slnx            # Backend ve test projelerini birleştiren solution
-├── global.json              # .NET 10 SDK seçimi
+├── client/                     # React uygulaması ve component testleri
+├── server/FlowPilot.Api/        # API, ServiceRequests, Data ve migration
+├── tests/FlowPilot.Api.Tests/   # Gerçek PostgreSQL entegrasyon testleri
+├── .github/workflows/quality.yml
+├── .config/dotnet-tools.json    # Yerel EF CLI sürümü
+├── FlowPilot.slnx
+├── global.json
+├── compose.yaml                # Yalnızca yerel PostgreSQL
+├── .env.example                # Backend/DB configuration referansı
 ├── README.md
-├── AI_LOG.md
-├── .gitignore
-└── .env.example              # Backend environment ayarları için referans
+└── AI_LOG.md
 ```
 
-Tek repository içinde frontend ve backend bağımsız çalışır. Sonraki aşamada tarayıcıdan ASP.NET Core API'ye HTTP üzerinden talepler gönderilecek; API, EF Core aracılığıyla PostgreSQL'e kayıt yapacak. Henüz bu bağlantıların hiçbiri kurulmadı. Bu boyutta bir başlangıç için ayrı domain/infrastructure projeleri, repository katmanı veya ek deployment altyapısı oluşturulmadı.
+Tek repo, bir API projesi ve bir backend test projesi vardır. Frontend testleri `client/src/` içinde bileşenlerin yanında tutulur. Gereksiz katman, generic repository veya deployment altyapısı yoktur.
 
-Frontend testleri bileşenlerle birlikte `client/src/` altında tutulur; kök `tests/` dizini backend testlerini içerir. Hazır proje template'i ve UI kit kullanılmadı.
+Veri akışı: **React form → client validation → POST /api/requests → server validation → ServiceRequestService → EF Core/Npgsql → PostgreSQL → HTTP 201 → UI success**. Servis `SaveChangesAsync` tamamlanmadan başarı dönmez. UUID `Id` ve UTC `CreatedAt` sunucuda üretilir; client bu alanları belirleyemez.
 
-## Yerel çalıştırma
+## Gereksinimler
 
-Gereksinimler: Node.js 24.14 veya üstü 24.x, npm ve .NET 10 SDK. PostgreSQL bu aşamada gerekli değildir. `global.json`, en az 10.0.100 olan kararlı 10.0 SDK feature band'lerini kabul eder.
+- Node.js **24.14 veya üstü 24.x**, npm.
+- Kararlı **.NET 10 SDK** (en az 10.0.100; `global.json` latestFeature roll-forward kullanır).
+- Yerel uygulama için PostgreSQL; Compose ve entegrasyon testleri için çalışan Docker engine / Docker Desktop.
+- Git. Yerel varsayılan portlar: frontend 5173, API 5080, PostgreSQL 5433.
 
-### Frontend
-
-Repository kökünden:
+İlk geliştirme makinesinde sistem .NET 8 olduğundan SDK 10.0.401 ayrı dizine kurulmuştur. Yalnızca bu kurulumu kullanıyorsanız terminalde:
 
 ```sh
-cd client
-npm ci
-npm run dev
+export DOTNET_ROOT="$HOME/.local/share/flowpilot/dotnet"
+export PATH="$DOTNET_ROOT:$PATH"
 ```
 
-Başlangıç ekranı `http://127.0.0.1:5173` adresinde açılır. Development portu sabittir; kullanımda ise Vite hata verir.
+Standart .NET 10 SDK kurulumu olan diğer makinelerde bu adım gerekmez. `dotnet --version` ve `node --version` ile sürümleri kontrol edin.
 
-Build ve testler (`client/` içinden):
+## PostgreSQL ve backend environment
+
+Repository kökünde, ilk kurulumda:
 
 ```sh
-npm run build
-npm test
+test -f .env || cp .env.example .env
 ```
 
-Build komutu test dosyaları ve Vite ayarları dahil TypeScript kontrolünü de çalıştırır. `npm run typecheck` bağımsız tip kontrolü, `npm run test:watch` izleme modu ve `npm run preview` build çıktısının yerel önizlemesi içindir.
-
-### Backend
-
-Repository kökünden:
+Ignored `.env` dosyasında `POSTGRES_PASSWORD=REPLACE_LOCALLY` değerini yerel bir parola ile değiştirin. `ConnectionStrings__Default` örneğini de aynı parola/port ile güncelleyin. Gerçek ayarları source code'a yazmayın.
 
 ```sh
-dotnet restore FlowPilot.slnx --locked-mode
-dotnet build FlowPilot.slnx --no-restore
-dotnet test --solution FlowPilot.slnx --no-build --no-restore
-dotnet run --project server/FlowPilot.Api --launch-profile http --no-build
-```
-
-Host `http://localhost:5080` adresinde çalışır. Henüz endpoint bulunmadığından `/` dahil isteklerin `404` dönmesi beklenir; Swagger veya health endpoint'i eklenmedi. Yerel HTTP profili sadece geliştirme başlangıcı içindir.
-
-Bu ilk doğrulama sırasında sistemdeki .NET 8'e ek olarak .NET SDK 10.0.401, sistem kurulumunu değiştirmeden `$HOME/.local/share/flowpilot/dotnet` dizinine kuruldu. Bu makinede yukarıdaki komutlardan önce aynı terminal oturumunda:
-
-```sh
-export PATH="$HOME/.local/share/flowpilot/dotnet:$PATH"
-```
-
-Diğer makinelerde standart .NET 10 SDK kurulumu yeterlidir. xUnit, `global.json` içinde seçilen Microsoft Testing Platform üzerinden çalışır. Tam bağımlılık sürümleri npm ve NuGet lock dosyalarıyla kaydedilir.
-
-### Environment ve gizli bilgiler
-
-- Kökteki `.env.example` yalnızca referanstır; ASP.NET Core `.env` dosyalarını otomatik okumaz. Geliştirme profili, mevcut host için gereken gizli olmayan ayarları zaten sağlar.
-- Sonraki aşamada backend gizli ayarları environment değişkenleri veya .NET User Secrets üzerinden verilecek. `ConnectionStrings__FlowPilot` örneği yorum satırındadır ve şu anda kullanılmaz.
-- Frontend için `client/.env.example`, ileride kullanılacak `VITE_API_BASE_URL` değerini gösterir. Gerektiğinde `client/.env.local` olarak kopyalanabilir; Vite bu dizindeki dosyayı okur. Mevcut ekran bu ayarı tüketmez ve API çağrısı yapmaz.
-- `VITE_*` değerleri tarayıcıya açıktır; parola veya başka gizli bilgi içeremez. Gerçek `.env` dosyaları, yerel secret ayarları, sertifikalar ve build çıktıları `.gitignore` ile dışlanır; örnekler ve lock dosyaları repository'de tutulur.
-
-## Mevcut durum
-
-### İlk aşama checklist'i
-
-- [x] Repository incelendi; dizin boştu ve Git repository'si yoktu.
-- [x] Git başlatıldı ve `feature/flowpilot-mvp` branch'i oluşturuldu.
-- [x] React + TypeScript frontend iskeleti oluşturuldu.
-- [x] ASP.NET Core Web API host iskeleti oluşturuldu.
-- [x] Frontend ve backend test altyapıları hazırlandı.
-- [x] `.gitignore` ve gizli bilgi içermeyen environment örnekleri eklendi.
-- [x] Projenin amacı, teknolojileri, mimarisi ve mevcut durumu belgelendi.
-- [x] İlk aşama `AI_LOG.md` dosyasına kaydedildi.
-- [x] Frontend development/build, backend build ve test doğrulamaları tamamlandı.
-
-İlk doğrulama: `npm ci`, `npm run build` ve `npm test` başarılı; 1 frontend smoke testi geçti. Vite development sunucusu HTTP 200 verdi ve başlangıç ekranı uygulama içi tarayıcıda görüldü. `dotnet restore --locked-mode` ve solution build başarılı; API ve test projesi 0 uyarı/0 hata ile derlendi. Microsoft Testing Platform üzerinden 1 backend smoke testi geçti. Backend geliştirme profiliyle başlatıldı; endpoint olmadığı için `/` beklenen HTTP 404 yanıtını verdi. Bunlar yalnızca iskelet doğrulamalarıdır; tamamlanmamış ürün özelliklerini doğrulamaz.
-
-### Sonraki aşamalar için gereksinimler
-
-- [ ] Mobil ve masaüstü uyumlu landing page.
-- [ ] İsim, e-posta, hizmet seçimi ve açıklama alanlarından oluşan talep formu; hizmet seçenekleri ve validasyon kuralları netleştirilecek.
-- [ ] ServiceRequest modeli, API sözleşmesi ve talep oluşturma endpoint'i.
-- [ ] EF Core/Npgsql kurulumu, PostgreSQL bağlantısı ve migration.
-- [ ] Formun API'ye bağlanması; gönderim, başarı ve hata durumları.
-- [ ] Özelliklere uygun iş kuralı, API, form ve kalıcılık testleri.
-
-Authentication/authorization, admin paneli, Docker, Kubernetes ve deployment altyapısı bu aşamanın kapsamı dışındadır. Henüz commit atılmadı.
-
-## Sprint 2 — API ve PostgreSQL persistence
-
-### Güncel durum ve veri akışı
-
-`POST /api/requests` → `CreateServiceRequest` DTO → `ServiceRequestService` → `FlowPilotDbContext` → EF Core/Npgsql → PostgreSQL `ServiceRequests` tablosu.
-
-Servis, kaydı `SaveChangesAsync` ile gerçekten yazdıktan sonra `201 Created` döner. Veritabanı hatası başarıya dönüştürülmez; ASP.NET Core'un standart exception handler'ı genel `500` ProblemDetails yanıtı üretir. Ayrıntılı hata sözleşmesi Sprint 3'e bırakıldı. Otomatik migration uygulaması yapılmaz; database update aşağıdaki komutla açıkça çalıştırılır.
-
-`Id`, sunucunun ürettiği UUID'dir. `CreatedAt`, sunucunun ürettiği UTC `DateTimeOffset` değeridir ve PostgreSQL `timestamp with time zone` kolonunda saklanır. Request DTO'su bu iki alanı içermez; client'ın gönderdiği `createdAt` değeri kullanılmaz. Başarı response'u `id` ve `createdAt` içerir. GET endpoint'i geliştirilmediğinden response'a çalışmayan bir `Location` adresi eklenmez.
-
-Şema sınırları: isim 200, e-posta 320, hizmet tipi 64 ve açıklama 4000 karakter; alanlar veritabanında zorunludur. Bu sınırlar HTTP validasyonu değildir. Desteklenen hizmet tipleri `ServiceTypes.Supported` içinde merkezi olarak tanımlanmıştır:
-
-- `workflow-automation`
-- `system-integration`
-- `data-reporting`
-- `custom-software`
-
-Hizmet tipi allowlist kontrolü, format/uzunluk validasyonu ve ayrıntılı validation testleri Sprint 3'te eklenecek. Lookup table, generic repository, CQRS veya yeni katman projesi eklenmedi. React/frontend dosyaları değiştirilmedi.
-
-### PostgreSQL ve connection string
-
-Gereksinimler: .NET 10 SDK ve PostgreSQL. Yerel geliştirme/testler PostgreSQL 16.14 ile doğrulandı. İsteğe bağlı Compose yalnızca PostgreSQL çalıştırır; backend uygulaması container içinde çalışmaz. Otomatik entegrasyon testleri için çalışan bir Docker engine gerekir.
-
-Repository kökünden:
-
-```sh
-cp .env.example .env
-# .env içindeki POSTGRES_PASSWORD placeholder'ını yerel bir parola ile değiştirin.
-# ConnectionStrings__Default örneğindeki parolayı da aynı değerle güncelleyin.
 docker compose up -d --wait postgres
 ```
 
-Compose, `.env` dosyasını okur ve PostgreSQL'i yalnızca `127.0.0.1:5433` adresine açar. Port gerekirse `.env` içindeki `POSTGRES_PORT` ile değiştirilebilir; backend connection string portu da buna uygun olmalıdır. Veriler `flowpilot_postgres_data` volume'unda korunur. Mevcut volume üzerindeki veritabanı parolası `.env` değişince otomatik değişmez.
+Compose `.env` dosyasını okur; PostgreSQL 16.14'ü yalnızca `127.0.0.1:5433` adresine açar. `POSTGRES_PORT` değişirse backend connection string portunu da değiştirin. Veriler `flowpilot_postgres_data` volume'unda korunur. Mevcut volume üzerindeki parola `.env` düzenlenince otomatik değişmez.
 
-**ASP.NET Core `.env` dosyasını otomatik okumaz.** Backend ve EF CLI için connection string'i .NET User Secrets ile ayarlayın (aşağıdaki parola yalnızca placeholder'dır):
+**ASP.NET Core `.env` dosyasını otomatik okumaz.** Backend ve EF CLI için connection string'i environment üzerinden `ConnectionStrings__Default` ile veya Development ortamında User Secrets ile verin. User Secrets örneği (placeholder'ı gerçek yerel değerle değiştirin):
 
 ```sh
 dotnet user-secrets set 'ConnectionStrings:Default' \
@@ -174,187 +74,22 @@ dotnet user-secrets set 'ConnectionStrings:Default' \
   --project server/FlowPilot.Api
 ```
 
-Alternatif olarak aynı değeri process environment'ında `ConnectionStrings__Default` anahtarına verin. User Secrets kullanırken EF CLI terminalinde `ASPNETCORE_ENVIRONMENT=Development` ayarlanmalıdır. Eksik/boş connection string host başlangıcında anlaşılır bir configuration hatası üretir. Gerçek credential, appsettings/kaynak koduna yazılmaz; `.env` Git tarafından dışlanır. Yalnızca `.env.example` repository'de tutulur.
+User Secrets Git'e dahil değildir ve production secret store yerine geçmez. Eksik/boş connection string host başlangıcında açıklayıcı configuration hatası üretir.
 
-### Migration, build ve backend çalıştırma
+## Uygulamayı birlikte çalıştırma
 
-Komutlar repository kökünden çalıştırılır. İlk milestone'da kurulan ayrı SDK kullanılıyorsa önce ilgili PATH ayarını yukarıdaki gibi yapın; EF tool'unun da aynı runtime'ı kullanması için gerekirse `export DOTNET_ROOT="$HOME/.local/share/flowpilot/dotnet"` ekleyin.
+İlk terminal, repository kökünde; PostgreSQL ve yukarıdaki secret ayarı hazır olmalıdır:
 
 ```sh
 export ASPNETCORE_ENVIRONMENT=Development
 dotnet restore FlowPilot.slnx --locked-mode
 dotnet tool restore
 dotnet build FlowPilot.slnx --no-restore
-dotnet ef migrations list --project server/FlowPilot.Api
 dotnet ef database update --project server/FlowPilot.Api
 dotnet run --project server/FlowPilot.Api --launch-profile http --no-build
 ```
 
-`InitialCreate` migration'ı, designer dosyası ve model snapshot'ı `server/FlowPilot.Api/Data/Migrations/` altında version control'e dahildir. Mevcut ilk migration'ı yeniden oluşturmayın. İleride şema değişikliği için örnek komut:
-
-```sh
-dotnet ef migrations add YourMigrationName --project server/FlowPilot.Api --output-dir Data/Migrations
-```
-
-Backend `http://localhost:5080` adresinde çalışır. `POST /api/requests` endpoint'i vardır; `/` için hâlâ `404` beklenir.
-
-### Örnek API request
-
-Yalnızca kurgusal veri kullanın:
-
-```sh
-curl -i http://localhost:5080/api/requests \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "name": "Test User",
-    "email": "test@example.com",
-    "serviceType": "workflow-automation",
-    "description": "This is a fictional evaluation request."
-  }'
-```
-
-Başarılı kayıt sonucu `201 Created` ve `{"id":"<server-generated-uuid>","createdAt":"<server-generated-utc-time>"}` döner. Response `id` değerini kullanarak gerçek kaydı kontrol etmek için:
-
-```sh
-docker compose exec postgres psql -U flowpilot -d flowpilot \
-  -c 'SELECT "Id", "Name", "Email", "ServiceType", "Description", "CreatedAt" FROM "ServiceRequests";'
-```
-
-Yerel PostgreSQL'i durdurmak için `docker compose stop postgres` kullanın; volume ve kayıtlar korunur.
-
-### Testler ve doğrulama
-
-Docker açıkken:
-
-```sh
-dotnet test --solution FlowPilot.slnx --no-build --no-restore
-dotnet ef migrations has-pending-model-changes --project server/FlowPilot.Api
-```
-
-Testcontainers ayrı ve geçici gerçek PostgreSQL 16.14 container'ı başlatır, aynı migration'ı uygular ve testlerden sonra kaldırır. Yerel geliştirme veritabanını değiştirmez; ilk çalıştırmada PostgreSQL ve resource reaper image'larını indirebilir. Docker yoksa entegrasyon testleri başarısız olur; fake/in-memory testine sessizce geçilmez.
-
-Test kapsamı: eksik configuration için başlangıç hatası; geçerli request için `201` ve bağımsız SQL bağlantısıyla tüm alanların kalıcı kaydı; client timestamp'ının yok sayılması; gerçek PostgreSQL'deki eksik database hatası için `500`. Detaylı validasyon testleri sonraki sprinttedir.
-
-Sprint 2 doğrulama sonuçları `AI_LOG.md` içinde kaydedilir.
-
-### Branch ve PR çalışma modeli
-
-```text
-main (ilk milestone: 0f8c2d4)
-└── feature/sprint-2-backend-persistence
-```
-
-- `main`, GitHub varsayılan branch'i ve stabil teslim branch'idir. Doğrudan geliştirme yapılmaz.
-- Her sprint için güncel `main` üzerinden ayrı `feature/`, `fix/` veya `test/` branch'i açılır.
-- Değişiklikler `main` hedefli Pull Request ile incelenir; mümkünse squash merge tercih edilir.
-- Sprint 2 PR'ı inceleme için açık bırakılacak; kullanıcı incelemeden merge edilmeyecek.
-
-Sprint 3'e bırakılanlar: server-side validasyon, ayrıntılı hata yönetimi ve ilgili testler. Frontend entegrasyonu, landing page, authentication/authorization, admin paneli, rate limiting, e-posta ve deployment geliştirilmedi.
-
-## Sprint 3 — Server-side validation ve hata davranışı
-
-Sprint 2 PR #1'in `main` içine merge edildiği doğrulandı. Çalışma branch'i `feature/sprint-3-validation-error-handling`; frontend değişmedi. Mevcut EF Core/PostgreSQL kayıt akışı korunur ve validation, endpoint handler'ı çalışmadan önce tamamlanır.
-
-### Validation kuralları
-
-| Alan | Kural |
-| --- | --- |
-| `name` | Zorunlu; trim sonrası whitespace/boş değer reddedilir; en fazla 200 karakter |
-| `email` | Zorunlu; trim sonrası .NET `EmailAddress` format kontrolü; en fazla 320 karakter |
-| `serviceType` | Tam olarak `workflow-automation`, `system-integration`, `data-reporting` veya `custom-software` |
-| `description` | Zorunlu; trim sonrası 10–4000 karakter; whitespace/boş değer reddedilir |
-
-Eksik ve `null` alanlar da reddedilir. ServiceType karşılaştırması case-sensitive'dir; çevresindeki whitespace kabul edilmez. Name, Email ve Description kenar boşlukları temizlenerek saklanır; e-posta harfleri ve alanların içindeki boşluklar değiştirilmez. Uzunluklar .NET string uzunluğuyla, trim sonrasında hesaplanır.
-
-Maksimumlar mevcut PostgreSQL şemasıyla aynı tutuldu; 10 karakterlik açıklama minimumu, talebin kısa da olsa anlamlı bir açıklama içermesi için seçildi. Kurallar DTO üzerindeki DataAnnotations, `ServiceRequestLimits` sabitleri ve mevcut `ServiceTypes.Supported` allowlist'inden gelir. Yeni migration veya validation kütüphanesi eklenmedi.
-
-### HTTP sözleşmesi
-
-- **201 Created:** Geçerli kayıt PostgreSQL'e yazıldıktan sonra `id` ve sunucu UTC `createdAt` değeri döner.
-- **400 Bad Request:** Alan validasyonu başarısızsa `application/problem+json` ve camelCase alan anahtarları altında mesaj dizileri döner. Geçersiz istek DB'ye yazılmaz. Boş/bozuk JSON, JSON `null` gövde ve yanlış JSON alan tipleri de `400` döner; bind edilemeyen gövde için genel ProblemDetails kullanılır.
-- **500 Internal Server Error:** Beklenmeyen persistence hatası genel ProblemDetails yanıtı üretir; başarı bilgisi, exception mesajı, stack trace veya connection string içermez. Bu davranış Development ortamında da geçerlidir.
-
-Alan validasyonu örneği (diğer ProblemDetails metadata alanları da bulunabilir):
-
-```json
-{
-  "title": "Validation failed.",
-  "status": 400,
-  "instance": "/api/requests",
-  "errors": {
-    "name": ["Name is required."],
-    "email": ["Email must be a valid email address."]
-  }
-}
-```
-
-JSON gövdesi okunamadığında `title` değeri `Bad request.` olur. `500` için `title` değeri `An unexpected error occurred.`, `detail` değeri `The request could not be completed. Please try again later.` olur. Validation mesajlarına girilen değerler geri yansıtılmaz. Client'ın gönderdiği `id` ve `createdAt` DTO'da yoktur; yok sayılır ve sunucunun ürettiği değerlerin yerine geçmez.
-
-### Doğrulama
-
-Sprint 2'deki kurulum ve test komutları aynıdır:
-
-```sh
-dotnet restore FlowPilot.slnx --locked-mode
-dotnet build FlowPilot.slnx --no-restore
-dotnet test --solution FlowPilot.slnx --no-build --no-restore
-dotnet ef migrations has-pending-model-changes --project server/FlowPilot.Api
-```
-
-Gerçek PostgreSQL/Testcontainers ile 42 test geçti: geçerli kayıt ve alanların trim edilmesi; dört hizmet tipinin kabulü; eksik/null/boş/whitespace ve uzunluk sınırları; alan bazlı hata sözleşmesi; tüm geçersiz isteklerde bağımsız SQL sorgularıyla kayıt sayısının değişmediği; client Id/CreatedAt değerlerinin yok sayılması; güvenli `500` yanıtı. Migration modelinde değişiklik yoktur. Fake/in-memory provider kullanılmadı.
-
-Sprint 3 PR'ı inceleme için açık bırakılır; merge edilmez. Sonraki sprintin landing page/frontend işi bu sprintte başlatılmadı.
-
-## Sprint 4 — Responsive hizmet landing page'i
-
-Sprint 3 PR #2'nin `main` içine merge edildiği doğrulandı. Çalışma branch'i `feature/sprint-4-landing-page`.
-
-Sayfa akışı: sürekli görünür basit navigasyon → ana mesaj ve form bölümüne kayan “Projenizi Anlatın” CTA'sı → dört hizmet → üç çalışma adımı → talep formu → kısa footer. İçerik Türkçedir; kurgusal hizmet için doğrulanamayacak müşteri/performans iddiaları eklenmedi.
-
-React ve mevcut CSS ile sıfırdan oluşturuldu. Hazır template/UI kit, Tailwind, yeni UI dependency'si veya harici font/görsel servisi kullanılmadı. Açık nötr yüzeyler, koyu yeşil vurgu ve sistem fontları kullanılır; örnek iş akışı CSS/HTML ve dekoratif ikonlar yerel SVG ile çizildi.
-
-Form alanları isim, e-posta, hizmet seçimi ve açıklamadır. Türkçe hizmet label'ları ve backend ile birebir aynı dört value, `client/src/services.ts` kaynağından gelir. Alanlar doldurulabilir; **gönderim kapalıdır**. Düğme disabled'dır, native submit/navigation engellenir; API çağrısı, kayıt, local storage veya sahte başarı mesajı yoktur. Gönderimin kapalı olduğu formda açıkça yazılır. Gerçek submit/API entegrasyonu Sprint 5'e bırakıldı.
-
-Accessibility: semantic header/main/section/footer, tek `h1`, h2/h3 sırası, gerçek label bağlantıları, skip link, klavye focus halkası, autocomplete ve alan açıklamaları bulunur. Dekoratif öğeler `aria-hidden` ile okunmaz; `prefers-reduced-motion` durumunda smooth scroll/transition kapatılır. CTA 52 px ve menü linkleri en az 44 px yüksekliktedir. Ölçülen ana metin/CTA/placeholder kontrastları 4.5:1 üzerinde; input sınırı 3.30:1'dir.
-
-Development server tarayıcı kontrolleri: **320×800, 390×844, 430×932, 768×1024, 1440×1000**. Yatay taşma görülmedi. Mobilde hizmetler ve form alanları tek sütuna geçer; tablet hizmetleri iki sütundur, form bölümü 900 px altında tek sütuna geçerek alanları geniş tutar. Mobil/desktop form, CTA anchor kayması ve klavyeyle isim → e-posta geçişi kontrol edildi. Fiziksel cihaz ve kapsamlı screen reader denetimi yapılmadı.
-
-Frontend komutları repository kökünden:
-
-```sh
-cd client
-npm ci
-npm run dev
-```
-
-Sayfa `http://127.0.0.1:5173` adresinde açılır; backend'in çalışması gerekmez. Kontroller `client/` içinden:
-
-```sh
-npm run typecheck
-npm test
-npm run build
-```
-
-8 Vitest/React Testing Library testi: ana heading/landmark'lar, dört hizmet, CTA hedefi ve navigasyon anchor'ları, erişilebilir form label'ları, dört option value/label eşleşmesi, sıralı süreç adımları, gönderimin kapalı olması/native submit'in engellenmesi ve skip link. API mock testleri eklenmedi.
-
-`server/`, backend testleri, migration'lar ve backend davranışı değiştirilmedi. Sprint 4 PR'ı inceleme için açık bırakılacak; merge edilmeyecek. Sprint 5'e kendiliğinden geçilmeyecek.
-
-## Sprint 5 — Form/API entegrasyonu
-
-Sprint 4 PR #3'ün `main` içine merge edildiği doğrulandı. Çalışma branch'i `feature/sprint-5-form-api-integration`.
-
-### Birlikte çalıştırma
-
-Önce Sprint 2 bölümündeki PostgreSQL `.env` ve `ConnectionStrings:Default` environment/User Secrets ayarlarını tamamlayın. Gerçek parola yalnızca yerel ayarda tutulur. İlk terminal, repository kökünde:
-
-```sh
-docker compose up -d --wait postgres
-export ASPNETCORE_ENVIRONMENT=Development
-dotnet restore FlowPilot.slnx --locked-mode
-dotnet tool restore
-dotnet ef database update --project server/FlowPilot.Api
-dotnet run --project server/FlowPilot.Api --launch-profile http
-```
+İlk migration `20261007103358_InitialCreate` repository'dedir. Yeniden oluşturmayın. Startup'ta migration otomatik uygulanmaz; yukarıdaki database update adımı gereklidir.
 
 İkinci terminal, repository kökünden:
 
@@ -365,30 +100,117 @@ npm ci
 npm run dev
 ```
 
-Tarayıcıdan `http://127.0.0.1:5173` adresini açın. API localhost:5080 üzerinde, PostgreSQL ise mevcut Compose ayarıyla localhost:5433 üzerindedir.
+Tarayıcı: `http://127.0.0.1:5173`. API: `http://localhost:5080/api/requests`. `/` için 404 beklenir; GET/Swagger/health endpoint'i yoktur. Vite portu kullanımda ise hata verir.
 
-`client/.env.example` içindeki `VITE_API_BASE_URL=/api`, API kökünü **/api dahil** belirtir; frontend `${VITE_API_BASE_URL}/requests` adresine POST yapar. Development'ta `/api` yolu Vite tarafından `API_PROXY_TARGET=http://localhost:5080` hedefine iletilir. Böylece browser aynı origin'i kullanır; backend CORS veya API sözleşmesi değişmedi. API adresi component'e hard-code edilmez.
+Development'ta frontend `/api` istekleri Vite proxy'si üzerinden API'ye gider; backend CORS gerekmez. API çalışmıyorsa sayfa açılır, gönderim genel hata verir ve değerler korunur.
 
-`VITE_API_BASE_URL`, build sırasında browser bundle'ına alınan public ayardır; secret içeremez. Production'da `/api` kullanımı için hosting katmanında aynı-origin API yönlendirmesi sağlanmalıdır. Ayrı origin kullanılacaksa `https://api.example.com/api` gibi tam API kökü seçilebilir; o origin'de yalnızca güvenilen frontend için CORS yapılandırması gerekir. Development proxy production build'e dahil değildir. Bu sprintte hosting/deployment veya backend CORS değişikliği yapılmadı.
+Durdurmak için iki terminalde Ctrl+C, ardından `docker compose stop postgres` kullanın. Volume ve kayıtlar korunur.
 
-### Veri akışı ve form davranışı
+## Environment referansı ve production hazırlığı
 
-Kullanıcı → React form → trim/client validation → `POST /api/requests` → server validation → EF Core → PostgreSQL → HTTP sonucu → UI.
+| Ayar | Nerede / amaç |
+| --- | --- |
+| `ConnectionStrings__Default` | Backend/EF; secret store veya process environment; zorunlu |
+| `ASPNETCORE_ENVIRONMENT` | Yerelde Development, deployment'ta Production |
+| `ASPNETCORE_URLS` | Hosting'in gerektirdiği bind adresi/port; development launch profile 5080 |
+| `AllowedHosts` | Backend; production'da gerçek host adı/host adları ile override edin (noktalı virgülle ayrılır) |
+| `POSTGRES_DB/USER/PASSWORD/PORT` | Yalnızca yerel Compose; örnek root `.env.example` |
+| `VITE_API_BASE_URL` | Public, build-time frontend API kökü; **/api dahil**, varsayılan `/api` |
+| `API_PROXY_TARGET` | Yalnızca Vite development proxy hedefi; varsayılan localhost:5080 |
 
-Client validation kullanıcı deneyimi içindir; doğruluğun ve güvenliğin esas kaynağı değişmeyen server validation'dır. Client; zorunlu/whitespace olmayan isim (maksimum 200), temel e-posta formatı (maksimum 320), tam eşleşen dört ServiceType ve trim sonrası 10–4000 karakter açıklama kontrolü yapar. İsim/e-posta/açıklama trim edilmiş payload ile gönderilir. Server alanları yeniden doğrular.
+`client/.env.example` frontend ayarlarının örneğidir. `VITE_*` browser bundle'ına girer; parola/connection string içeremez. Root `.env.example` production override'ları da yorum olarak gösterir. Gerçek `.env`, `.env.local`, sertifika, build ve dependency çıktıları `.gitignore` ile dışlanır; örnekler ve lock dosyaları version control'dedir.
 
-Form state'leri `idle`, `submitting`, `success`, `validation-error`, `server-error` olarak yönetilir. Bekleyen istekte alanlar ve düğme kilitlenir, “Gönderiliyor...” gösterilir; ref koruması aynı anda ikinci submit'i de engeller. Otomatik retry eklenmedi.
+Production build'e localhost API adresi gömülmez; varsayılan `/api/requests` aynı origin'i kullanır. **Vite development proxy production'da çalışmaz.** Hosting katmanında `/api` API'ye yönlendirilmeli ve HTTPS sağlanmalıdır. Ayrı origin tercih edilirse frontend build'inden önce `VITE_API_BASE_URL=https://api.example.com/api` ayarlanmalı; API'de yalnızca güvenilen frontend origin'i için CORS ayrıca yapılandırılmalıdır. Bu henüz uygulanmamıştır.
 
-- **Yalnızca HTTP 201:** “Talebiniz alındı. En kısa sürede sizinle iletişime geçeceğiz.” gösterilir ve form temizlenir. API, `201` yanıtını persistence tamamlandıktan sonra üretir. Fetch'in resolve olması, `200/204` veya client validation'ın geçmesi başarı sayılmaz.
-- **HTTP 400:** Bilinen alan anahtarları ilgili input yanındaki güvenli Türkçe mesajlara eşlenir. Backend'in raw mesajı, title/detail'i veya HTML'i ekrana basılmaz; bilinmeyen/bozuk hata genel alana düşer. Değerler korunur.
-- **500, diğer beklenmeyen status veya network failure:** “Talebiniz kaydedilemedi. Lütfen tekrar deneyin.” gösterilir; başarı yoktur, değerler korunur, kullanıcı yeniden deneyebilir.
+`appsettings.json` host allowlist'i yerel adreslerle sınırlıdır; production'da `AllowedHosts` override'ı gereklidir. Production API'yi development `launchSettings.json` profiliyle çalıştırmayın. Backend bind adresi, host, connection string ve HTTPS seçilen hosting'e göre Sprint 7'de ayarlanacaktır.
 
-Alan hataları `aria-invalid`/`aria-describedby` ile bağlanır. Loading/success için polite status region, hata için alert kullanılır. Bekleyen alan grubunda `aria-busy` vardır; announcement alanı bunun dışındadır. Başarısız validation sonrasında ilk hatalı alan veya genel hata odağa alınır; düzeltme sırasında focus başka alana sıçramaz.
+Build çıktıları (deployment yapmaz):
 
-### Doğrulama ve mevcut sınırlar
+```sh
+# repository kökünde
+npm --prefix client run build
+dotnet publish server/FlowPilot.Api --configuration Release --no-restore
+```
 
-Frontend: `npm run typecheck`, `npm test`, `npm run build` başarılı; toplam **33 test** geçti. Fetch mock'larıyla doğrulanan component davranışları gerçek E2E kanıtı değildir. Backend build 0 uyarı/0 hata, **42 regresyon testi** gerçek PostgreSQL/Testcontainers ile geçti.
+Frontend çıktısı `client/dist/`, backend publish çıktısı `server/FlowPilot.Api/bin/Release/net10.0/publish/` altındadır. Migration release sırasında açıkça uygulanmalıdır. Production DB/domain/canlı URL bu sprintte oluşturulmaz.
 
-Ayrı manuel E2E kontrolünde gerçek React + API + PostgreSQL çalıştırıldı. `Sprint Five Test` / `sprint5@example.com` / `workflow-automation` kurgusal kaydı browser'dan gönderildi. Geçici DB kilidi sırasında loading/disabled durumları ve başarı mesajının yokluğu görüldü; kilit açıldıktan sonra API logunda `201`, UI'da başarı/temizleme ve bağımsız SQL sorgusunda aynı kayıt doğrulandı. API kapatıldığında hata mesajı çıktı, değerler korundu, düğme yeniden açıldı; DB kayıt sayısı artmadı. Ayrıntılar `AI_LOG.md` içindedir.
+## API ve validation sözleşmesi
 
-Backend kaynakları, testleri, migration'lar, paketler ve landing page tasarımı değiştirilmedi. Admin/auth/analytics/e-posta/rate limiting/deployment eklenmedi. Manuel E2E otomatik CI/browser test paketi değildir; Sprint 6 kalite/deployment işleri başlatılmadı. PR inceleme için OPEN/NOT MERGED bırakılacak.
+| Alan | Kural |
+| --- | --- |
+| `name` | Zorunlu; trim sonrası 1–200 karakter |
+| `email` | Zorunlu; trim sonrası temel e-posta formatı; maksimum 320 karakter |
+| `serviceType` | Exact/case-sensitive: workflow-automation, system-integration, data-reporting, custom-software |
+| `description` | Zorunlu; trim sonrası 10–4000 karakter |
+
+Server validation esas kaynaktır; client validation UX sağlar. Eksik/null/boş/whitespace, desteklenmeyen hizmet ve hatalı JSON reddedilir. E-posta kontrolü teslim edilebilirlik kontrolü değildir. Hizmet değerleri trim edilmez; diğer üç alan trim edilerek saklanır.
+
+- **201:** DB yazımı tamamlanmıştır; response `id` ve `createdAt` içerir. UI başarı mesajı gösterip dört alanı temizler. 200/204 başarı sayılmaz.
+- **400:** ProblemDetails; validation hataları camelCase alan anahtarları altında mesaj dizileridir. Client yalnızca bilinen alanlara kendi güvenli Türkçe mesajlarını eşler. Bozuk/bilinmeyen body genel hataya düşer. Kayıt oluşturulmaz.
+- **500 / network hatası:** Genel hata; değerler korunur ve kullanıcı tekrar deneyebilir. Exception/stack trace/DB credential client'a verilmez. Otomatik retry yoktur.
+
+Pending sırasında form kilitlenir ve ikinci submit engellenir. Loading/success için polite status live region, hata için alert; alanlarda label, aria-invalid ve aria-describedby bağlantıları bulunur. Yeni hatada ilgili alan/summary focus alır; düzenlerken focus sıçramaz. Landing page skip link, semantic landmark, sıralı heading, visible focus ve reduced-motion CSS içerir.
+
+Bağımsız SQL ile kurgusal QA kaydını kontrol etmek için:
+
+```sh
+docker compose exec -T postgres psql -U flowpilot -d flowpilot <<'SQL'
+SELECT "Id", "Name", "Email", "ServiceType", "Description", "CreatedAt"
+FROM "ServiceRequests" WHERE "Email" = 'final-qa@example.com';
+SQL
+```
+
+## Testler ve CI
+
+Frontend (`client/` içinde):
+
+```sh
+npm ci
+npm run typecheck
+npm test
+npm run build
+```
+
+Backend (repository kökünde; Docker açık):
+
+```sh
+dotnet restore FlowPilot.slnx --locked-mode
+dotnet build FlowPilot.slnx --configuration Release --no-restore
+dotnet test --solution FlowPilot.slnx --configuration Release --no-build --no-restore
+```
+
+Microsoft Testing Platform için `dotnet test --solution` kullanılır. Testcontainers, development DB'den ayrı geçici gerçek PostgreSQL 16.14 container'ları başlatıp migration uygular; fixture sonunda kaldırır. Docker yoksa testler başarısız olur; fake/in-memory fallback yoktur. İlk çalıştırmada image indirme gerekebilir. Client component testlerinin fetch çağrıları mock'tur; gerçek E2E yerine geçmez.
+
+Model/migration uyumu (çalışan yerel DB configuration'ı ile):
+
+```sh
+dotnet ef migrations has-pending-model-changes --project server/FlowPilot.Api
+```
+
+[Quality checks workflow](.github/workflows/quality.yml), `main` hedefli PR'larda ve `main` push'larında frontend install/typecheck/test/build, backend locked restore/Release build/test çalıştırır. Tek Ubuntu 24.04 job'u; Node 24 ve kararlı .NET 10; npm/NuGet cache; contents:read; release commit SHA'larına sabitlenmiş resmi Actions. Runner'ın Docker engine'i gerçek Testcontainers/PostgreSQL testleri için kullanılır. Repo secret'ı veya Compose development DB'si gerekmez; testler/devam eden adımlar gevşetilmez. Workflow deployment yapmaz. Branch protection/required check ayarı ayrıca GitHub repository yönetimidir; bu sprintte değiştirilmez.
+
+## Sprint 6 requirement checklist
+
+| Gereksinim | Kanıt / durum |
+| --- | --- |
+| Mobil/desktop landing page | React/CSS, browser viewport audit |
+| İsim/e-posta/hizmet/açıklama | Label'lı dört controlled alan, dört desteklenen service |
+| Client/server validation | Component ve gerçek PostgreSQL API testleri |
+| Submitting/success/error | 33 frontend testi; gerçek browser veri/hata akışı |
+| Kalıcı PostgreSQL kayıt | 42 backend testi; bağımsız SQL ile manuel QA kaydı |
+| Başarı yalnızca kayıt sonrası | SaveChangesAsync → 201 → UI; geçici SQL lock ile gözlem |
+| README/AI_LOG/kaynak kod | Güncel rehber, tarihsel sprint günlüğü, tek repo |
+| Deployment'a hazır configuration | Public API root ve secret/environment override'ları; yayın Sprint 7 |
+| CI | GitHub Actions PR ve main kalite kontrolleri |
+
+Yerel Sprint 6 sonuçları: **33 frontend testi**, **42 backend testi**, production frontend build ve Release backend build başarılı; backend **0 warning / 0 error**. Manuel browser → API → PostgreSQL regresyonunda tamamen kurgusal `Final QA Test` / `final-qa@example.com` / `system-integration` kaydı doğrulandı. Accessibility ve remote CI'ın ayrıntılı sonuçları/run bağlantıları AI_LOG Sprint 6 kaydındadır.
+
+## Bilinen eksikler ve kapsam
+
+- Canlı deployment, production DB, domain, hosting/HTTPS ve production routing Sprint 7'de yapılacak; ayrı-origin CORS henüz yok.
+- Gerçek browser E2E ve axe audit bu sprintte manuel çalıştırılır; CI'da browser/a11y job'u yoktur.
+- Fiziksel mobil cihaz ve kapsamlı screen reader denetimi yapılmadı. Otomatik audit tek başına WCAG uyumluluk sertifikası değildir.
+- Yük/kapasite testleri, uygulama seviyesinde network timeout ve sunucu idempotency kapsam dışıdır; mevcut koruma tek pending form submit'ini engeller.
+- Auth/admin/analytics/e-posta/dashboard/rate limiting eklenmedi; bu projede istenen özellikler değildir.
+
+Geliştirmeler güncel `main` üzerinden ayrı sprint branch'inde yapılır; PR inceleme için açık bırakılır, otomatik merge edilmez.

@@ -294,3 +294,111 @@ Desktop feedback görüntüleri repository dışında Codex visualizations dizin
 Backend ve landing page tasarımı korunur; auth/admin/analytics/e-posta/rate limiting/dashboard/deployment veya yeni backend feature eklenmedi. Manuel E2E, otomatik CI browser testi değildir. Production hosting, ayrı-origin CORS, fiziksel cihaz/screen reader audit'i ve ağın yanıt vermeden uzun süre beklediği durumlar bu sprintte ayrıca doğrulanmadı.
 
 Teslim commit mesajı ve PR başlığı: `feat: connect service request form to API`. Son diff incelemesi sonrası typecheck/test/build tekrar başarılı oldu; 33 frontend testi sonucu korundu. Backend kaynakları/testleri ve package manifest/lock diff'leri boştu. Branch push edilip `main` hedefli PR açılacak ve OPEN/NOT MERGED bırakılacak. Sprint 6 CI/final kalite/deployment işine geçilmeyecek; commit SHA ve PR URL'si final raporda verilecek.
+
+## 2026-10-07 — Sprint 6: CI ve teslim öncesi kalite audit'i
+
+### Araç, görev ve başlangıç
+
+- Araç: Codex; Git/gh/npm/.NET/Docker CLI, patch, CUA uygulama içi browser ve geçici axe-core 4.14.0 denetim sayfası. Alt ajan kullanılmadı.
+- Görev: Yeni ürün özelliği eklemeden CI, regresyon, gerçek PostgreSQL akışı, negatif senaryolar, accessibility, configuration/security ve README/AI_LOG tutarlılığını kontrol etmek; commit/push ve merge edilmeyecek PR.
+- Başlangıç çalışma ağacı temizdi. Sprint 5 PR #4 `MERGED`, mergedAt `2026-10-07T12:42:37Z`, merge commit `c16f6739b03fb5447bf28900ac43df7eed02171a` olarak GitHub'dan doğrulandı. `492e416` bu commit'in ancestor'ıdır. Fetch ve fast-forward sonrası güncel `main` üzerinden `feature/sprint-6-ci-quality-audit` oluşturuldu.
+
+### İlk audit bulguları ve alınan kararlar
+
+- CI yoktu. `.github/workflows/quality.yml` eklendi: main hedefli pull_request ve main push, tek Ubuntu 24.04 job'u, Node 24/.NET 10 GA, npm/NuGet download cache, locked restore, Release build ve gerçek Testcontainers/PostgreSQL testleri. Docker erişimi açık bir adımla kontrol edilir. Matrix, ayrı DB service, in-memory provider, test skip veya deployment eklenmedi.
+- Workflow token'ı contents:read; checkout persist-credentials:false. Resmi checkout v7.0.1, setup-node v7.0.0 ve setup-dotnet v6.0.0 release tag'leri GitHub API'den doğrulanıp commit SHA'larına sabitlendi. 15 dakika job timeout ve aynı ref için eski run'ı iptal eden concurrency kullanıldı.
+- README önceki sprint açıklamalarını üst üste ekliyordu; eski “endpoint yok / gönderim kapalı” ifadeleri güncel kurulumun önünde kalmıştı. Güncel tek bir geliştirici rehberine dönüştürüldü. Tarihsel kayıtlar AI_LOG'da korundu; test README'sinin eski bölüm referansı da düzeltildi.
+- Production host allowlist varsayılanı yerel adreslerle sınırlıydı; environment override zaten destekleniyordu fakat örnek belirsizdi. Root `.env.example` içine secret içermeyen yorumlu Production/ASPNETCORE_URLS/AllowedHosts/connection string referansı eklendi; README deployment'ta override, HTTPS ve routing gereksinimlerini açıklar. Host koruması gevşetilmedi.
+- Ürün kodunda bu kontrollerle kanıtlanan eksik/hatalı davranış bulunmadı. API/frontend/model/migration ve mevcut test kaynakları değiştirilmedi. Güvenilir negatif testler zaten vardı; test sayısını artırmak için tekrar test yazılmadı.
+
+Resmi kaynaklar: [Actions setup-node](https://github.com/actions/setup-node), [setup-dotnet](https://github.com/actions/setup-dotnet), [checkout](https://github.com/actions/checkout), [Testcontainers CI](https://dotnet.testcontainers.org/cicd/). Runner Docker'ı kullanılabilir olduğunda Testcontainers ek DB fallback gerektirmez; gerçek remote run sonucu ayrıca aşağıda kaydedilecektir.
+
+### Yerel test/build ve configuration doğrulamaları
+
+Frontend komutları `client/`, .NET komutları repository kökünde; Node 24.14.0/npm 11.9.0 ve ayrı yerel SDK 10.0.401 kullanıldı. Docker engine erişilebilirdi.
+
+| Komut / kontrol | Sonuç |
+| --- | --- |
+| `npm ci` | Başarılı, 0 bildirilen npm vulnerability |
+| `npm run typecheck` | Başarılı |
+| `npm test` | 33 geçti; 2 test dosyası |
+| `npm run build` | TypeScript + Vite production build başarılı |
+| `dotnet restore FlowPilot.slnx --locked-mode` | Başarılı |
+| `dotnet build FlowPilot.slnx --configuration Release --no-restore` | 0 warning / 0 error |
+| `dotnet test --solution FlowPilot.slnx --configuration Release --no-build --no-restore` | 42 geçti, 0 başarısız, 0 atlanan; gerçek PostgreSQL/Testcontainers |
+| `dotnet tool restore` | EF CLI 10.0.12 hazır |
+| `dotnet ef database update --project server/FlowPilot.Api` | Yerel DB güncel; migration uygulanması gerekmiyordu |
+| `dotnet ef migrations has-pending-model-changes --project server/FlowPilot.Api` | Model değişikliği yok |
+| `dotnet publish server/FlowPilot.Api --configuration Release --no-restore` | Publish çıktısı üretildi; deployment yapılmadı |
+| `dotnet list server/FlowPilot.Api/FlowPilot.Api.csproj package --vulnerable --include-transitive` | Kaynakta bildirilen NuGet vulnerability yok |
+| README shell fenced block'ları `bash -n` | Syntax geçerli |
+
+Published API ayrıca yalnızca yerel 5090 portunda `Production` environment, `AllowedHosts=flowpilot.example.com` ve environment connection string ile çalıştırıldı. Güvenilen Host header ile `{}` isteği gerçek server validation ProblemDetails/400 ve dört alan hatası verdi; `untrusted.example.com` Host header 400 Invalid Hostname ile reddedildi. Bu bir canlı deployment değildir; process kontrol sonunda kapatıldı.
+
+### Gerçek React → API → PostgreSQL regresyonu
+
+Gerçek Vite/React, ASP.NET Core 5080 ve Compose PostgreSQL 16.14 birlikte çalıştırıldı; browser submit'inde fetch/API/DB mock yoktu. Sadece kurgusal veri:
+
+```text
+Name: Final QA Test
+Email: final-qa@example.com
+Service: system-integration
+Description: This is fictional data used only for final FlowPilot QA.
+```
+
+- Bağımsız psql sorgusunda başlangıç e-posta kayıt sayısı 0.
+- Ayrı kısa transaction'da ServiceRequests SHARE lock ile INSERT geçici bekletildi. Browser submit'inde alanlar/düğme disabled, status “Talebiniz gönderiliyor.”; success yoktu. Ürün koduna delay eklenmedi.
+- COMMIT ile lock bırakıldı. Geçici process-level hosting diagnostics, aynı browser POST'unun HTTP 201 ile tamamlandığını gösterdi (~6.3 saniye; kilit beklemesi dahil). Bu diagnostic ayarı version control'e yazılmadı.
+- Browser'da “Talebiniz alındı. En kısa sürede sizinle iletişime geçeceğiz.” ve dört alanın temizlenmesi gözlendi.
+- Bağımsız SQL sorgusunda tüm payload alanları doğrulandı: UUID `6e16b03e-b068-4130-bb68-544f30acdace`, CreatedAt `2026-10-07T12:48:45.413327+00:00`. UI'dan kayıt varlığı varsayılmadı.
+
+### Negatif senaryolar ve kanıt
+
+| Senaryo | Kanıt / sonuç |
+| --- | --- |
+| Geçersiz e-posta | Component testinde API çağrısı yok; ayrıca gerçek API POST 400 |
+| Desteklenmeyen serviceType | Gerçek API 400; mevcut exact/case/whitespace allowlist testleri geçti |
+| Boş description | Component validation reddeder; gerçek API 400 |
+| Geçersiz request DB'ye yazılmaz | Üç gerçek negatif POST öncesi/sonrası toplam DB sayısı 3; aynı kaldı. 42 backend testinde de bağımsız SQL karşılaştırmaları var |
+| API kaynaklı 500 | Compose PostgreSQL kontrollü durduruldu; gerçek API INSERT hatası ve HTTP 500. UI genel hata, success yok, dört değer korundu, düğme açıldı, summary focus aldı |
+| API kapalı | API process kapatıldı; Vite proxy ECONNREFUSED/500. UI success yok, değerler korunur. Bu proxy hatasıdır; gerçek fetch reject ayrı component testinde kapsanır |
+| Double submit | Mevcut deferred-response component testi ikinci form submit'inde fetch sayısının 1 kaldığını doğruladı; pending disabled ve ref guard aktif |
+
+DB tekrar açıldığında `final-qa@example.com` kayıt sayısı 1 idi. Hata yolları yeni kayıt oluşturmadı. Kontrol süreçleri durduruldu; named volume ve kurgusal kayıt korundu. Planlı DB/API kesintileri ürün bug'ı veya beklenmeyen test hatası olarak kaydedilmez.
+
+### Accessibility audit
+
+- axe-core 4.14.0 yalnızca `/tmp` altına kuruldu; geçici `client/sprint6-audit.html` ve `.qa/` dosyaları aynı gerçek App/component/style kaynaklarını yükledi. Ürün DOM'u denetlendi; sadece yardımcı QA kontrolleri exclude edildi. Repo dependency'si eklenmedi, geçici dosyalar kontrol sonunda kaldırıldı.
+- Idle, client validation-error ve server-error durumları ile 320×800 ve 1440×1000 viewport'larında axe **0 violation**, 45 başarılı kural bildirdi. `color-contrast` için gradient/dekoratif çizim düğümleri incomplete/manual review olarak raporlandı; otomatik tam kontrast başarısı iddia edilmedi.
+- Incomplete listesi incelendi. Workflow çizimi ve yardımcı oklar aria-hidden/dekoratif; anlamlı hero metni gradient'in en düşük kontrast veren uç rengi `#f1f6f2` ile ayrıca hesaplandı: muted 5.82:1, accent 6.32:1. Body 14.40:1, beyaz CTA 6.91:1, hata 7.06:1, başarı 8.81:1, placeholder 4.81:1, input border 3.30:1, focus 5.46:1. Kör otomatik CSS düzeltmesi yapılmadı.
+- Browser DOM/AX ile bir header/nav/main/footer, tek h1, h2/h3 sırası, gerçek dört label, invalid alanların aria-invalid=true ve mevcut hata/hint ID'lerine aria-describedby bağlantısı kontrol edildi.
+- Polite/atomic status ve atomic alert bulunur; live region pending fieldset'in dışındadır. Error focus ve değer düzenleme davranışları mevcut testlerde de geçti.
+- Klavye Tab ile skip link görünür oldu; Enter main'i focusladı; sonraki Tab hero CTA'ya geçti. Formda isim → Tab → e-posta, visible 3 px mavi outline doğrulandı. Keyboard trap görülmedi.
+- 320×800, 768×1024, 1440×1000'de uygulama root genişliği viewport'a eşitti; yatay taşma yok. İlk ölçüm aktif olmayan diğer sekmenin 686 px genişliğini verdi; aktif audit sekmesinden ölçüm tekrar alınarak doğru viewport değerleri kanıtlandı.
+- Mobil nav 44 px, CTA/submit 52 px, input yaklaşık 51.6 px, select 48 px; form alan genişliği 242 px (320 viewport).
+- Browser stylesheet'inde reduced-motion kuralının smooth scroll ve transition'ı kapattığı doğrulandı; OS tercihi değiştirilmedi. Fiziksel cihaz/screen reader denetimi ve tüm WCAG kriterleri için sertifikasyon yapılmadı.
+- JSON audit sonuçları ve gerçek success/500/offline ekran görüntüleri repository dışında Codex visualizations/flowpilot-sprint6 dizininde tutuldu. Geçici viewport reset edildi.
+
+### Basit güvenlik/veri akışı review
+
+- Git'te gerçek .env/.env.local yok; tüm branch history path kontrolünde bu dosyalar bulunmadı. `git check-ignore` root env, client local env ve build çıktılarını dışladı; yalnız örnekler track edilir.
+- Bilinen yerel random parola tracked dosyalar ve production JS bundle içinde literal karşılaştırmayla aranıp bulunmadı; credential çıktıya yazılmadı. Kod secret yerine environment/User Secrets kullanır.
+- Production JS'de localhost:5080/127.0.0.1:5080 API origin'i bulunmadı; API root varsayılanı /api. Development host/proxy/Compose ve host allowlist ayarları yerel referanslardır; deployment override gereksinimi README'de açık.
+- Mevcut gerçek DB testleri exception/stack/Npgsql/DB adı/parola sızıntısını ve client Id/CreatedAt overposting'in yok sayıldığını doğruladı. Gerçek DB kesintisi response'u UI'ya genel mesaj olarak yansıdı.
+- Server AddValidation aktif; sadece dört desteklenen exact serviceType kabul edilir; SaveChangesAsync sonrası 201 sözleşmesi değişmedi. Yeni security framework eklenmedi.
+
+### Requirement checklist ve README/AI_LOG audit'i
+
+Tüm istenen ürün maddeleri kod/test/browser/SQL kanıtıyla karşılandı: mobil/desktop landing page; isim/e-posta/hizmet/açıklama; client/server validation; submitting/success/error; PostgreSQL kalıcılığı; kayıt sonrası başarı; kaynak kod; README/AI_LOG; deployment için environment/secret/public API configuration. Canlı yayın bu checklist'in Sprint 6 kısmına dahil değildir.
+
+README artık amaç/stack/mimari/gereksinimler, ayrı frontend/backend kurulumları, PostgreSQL/secret ayarı, migration, birlikte çalıştırma, veri akışı/HTTP, test/CI, production override ve bilinen sınırları tek güncel rehberde içerir. Canlı URL uydurulmadı.
+
+AI_LOG Sprint 1–5 kayıtları git history ve mevcut kod/test kapsamıyla karşılaştırıldı. Önceki araç/görev/kararlar ve gerçek hata kayıtları korundu; yaşanmamış kabul/ret veya hata eklenmedi. Tarihsel 1/4/42 backend ve 1/8/33 frontend sonuçları kendi sprintlerinin sonuçlarıdır; güncel değerler 42 backend/33 frontend'dir. Eski “PR açılacak / merge edilmeyecek” cümleleri o andaki teslim planını anlatır: PR #1–4 sonradan kullanıcı tarafından merge edilmiştir; merge durumları bu audit'te GitHub API ile yeniden doğrulandı.
+
+### Kapsam ve henüz doğrulanmayanlar
+
+Yeni ürün özelliği, UI redesign, auth/admin/analytics/mail/dashboard/deployment/production DB/domain eklenmedi. Browser E2E ve axe denetimi manuel; CI browser/a11y testi değildir. Üretim HTTPS/routing/host/secrets/DB ve gerekirse ayrı-origin CORS Sprint 7'de hosting seçimine göre tamamlanacak. Fiziksel cihaz, kapsamlı assistive technology, yük/kapasite ve uygulama seviyesinde asılı network timeout ayrıca doğrulanmadı.
+
+### Remote CI ve teslim
+
+Yerel kalite kontrolleri tamamlandı. Workflow commit/push ve main hedefli PR'dan sonra gerçek GitHub Actions sonucu incelenecek; run sonucu veya root cause/minimum düzeltme bu bölüme eklenecek. PR merge edilmeyecek, Sprint 7'ye geçilmeyecek.
