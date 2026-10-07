@@ -12,6 +12,7 @@ yarn-error.log*
 [Bb]in/
 [Oo]bj/
 TestResults/
+artifacts/
 *.trx
 *.coverage
 *.coveragexml

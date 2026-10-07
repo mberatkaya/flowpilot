@@ -95,6 +95,7 @@ public class ServiceRequestPersistenceTests(PostgreSqlApiFixture fixture)
     [Theory]
     [InlineData("Testing")]
     [InlineData("Development")]
+    [InlineData("Production")]
     public async Task DatabaseFailureDoesNotReturnSuccessOrExposeInternals(string environment)
     {
         var connectionString = new NpgsqlConnectionStringBuilder(fixture.ConnectionString)

@@ -1,6 +1,36 @@
 name: flowpilot
 
 services:
+  app:
+    build:
+      context: .
+      target: app
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://0.0.0.0:8080
+      AllowedHosts: localhost;127.0.0.1
+      ConnectionStrings__Default: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-flowpilot};Username=${POSTGRES_USER:-flowpilot};Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in your local .env}"
+    ports:
+      - "127.0.0.1:${APP_PORT:-5080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  migrate:
+    build:
+      context: .
+      target: migrate
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Default: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-flowpilot};Username=${POSTGRES_USER:-flowpilot};Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in your local .env}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   postgres:
     image: postgres:16.14-alpine
     environment:
@@ -16,6 +46,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    restart: unless-stopped
 
 volumes:
   postgres_data:

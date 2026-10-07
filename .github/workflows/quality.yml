@@ -69,3 +69,6 @@ jobs:
 
       - name: Backend tests with real PostgreSQL
         run: dotnet test --solution FlowPilot.slnx --configuration Release --no-build --no-restore
+
+      - name: Prepare same-origin production package
+        run: bash scripts/publish-production.sh
