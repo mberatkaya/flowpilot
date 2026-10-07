@@ -541,3 +541,16 @@ Kararlar [Docker Compose dependency koşulları](https://docs.docker.com/compose
 ### Kapsam ve sonraya bırakılanlar
 
 Ürün kodu, endpoint, form veya model değişmedi; yeni migration yok. Mevcut 33/47 test suite bu altyapı değişikliği için yeniden çalıştırılmadı; bu görevdeki kanıt container build ve gerçek HTTP/browser/PostgreSQL smoke testleridir. AMD64 çalıştırma, CI'da Docker build job'u, public HTTPS hosting ve canlı production DB bu çalışmada doğrulanmadı. Bu yapı yerel Compose çalıştırmasıdır; Sprint 7 canlı teslim maddelerini tamamlanmış saymaz.
+
+## 2026-10-07 — Final live production deployment
+
+- Araç: Codex. Görev: kullanıcının doğruladığı final deployment durumunu yalnız README.md, AI_LOG.md ve deploy/README.md dosyalarına kaydetmek; önceki tarihsel kayıtları korumak.
+- Render Web Service seçildi ve Render PostgreSQL production DB oluşturuldu. Public HTTPS Render tarafından sağlanır; frontend ve API aynı origin'dedir.
+- Migration `20261007103358_InitialCreate` production DB'ye başarıyla uygulandı; `__EFMigrationsHistory` tablosunda SQL ile doğrulandı.
+- İlk canlı form denemesi `500 Internal Server Error` verdi. Root cause: Web Service `ConnectionStrings__Default` içindeki database adı gerçek Render DB adıyla eşleşmiyordu; yanlış `flowpilot_echo`, doğru `flowpilot_ech0` idi.
+- Connection string içindeki database adı düzeltildi. Sonraki canlı form gönderimleri `201 Created` döndürdü; success yalnızca gerçek `201` sonrası gösterildi.
+- Production PostgreSQL'de canlı form kayıtlarının gerçekten ve kalıcı olarak oluştuğu bağımsız SQL sorgusuyla doğrulandı.
+- Canlı URL: [FlowPilot](https://flowpilot-z7i9.onrender.com/).
+- Repo public hale getirildi. [PR #6](https://github.com/mberatkaya/flowpilot/pull/6) merge edildi; final merge commit `4b9ff75e0e1ce1bd7aa5ed9fdcf0474a1fe5fc3f`.
+- Bu dokümantasyon görevinde canlı HTTPS URL `200`, GitHub repository `PUBLIC`, PR `MERGED` ve merge SHA ayrıca kontrol edildi. Production migration/SQL ve `500` → `201` süreci kullanıcının doğruladığı deployment kanıtlarına dayanır; bu görevde production DB'ye yeniden bağlanılmadı veya yeni canlı form kaydı oluşturulmadı.
+- Teslim commit'i final dokümantasyon güncellemesi sonrası `main` HEAD'idir (`docs: record live production deployment`); SHA final Git raporunda verilir. Kod, test, migration ve deployment config değiştirilmedi.

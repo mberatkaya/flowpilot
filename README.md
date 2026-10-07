@@ -8,7 +8,9 @@ Hazır template veya UI kit kullanılmadı; React bileşenleri, CSS ve dekoratif
 
 ## Live demo
 
-**Henüz canlı URL yok.** Mevcut ortamda authenticated deployment CLI veya hosting hedefi bulunamadı. Sprint 7'nin belirtilen fallback'i kapsamında same-origin production paketi hazırlandı ve yerelde doğrulandı; bu doğrulama canlı deployment değildir. Kalıcı production DB, public HTTPS ve canlı smoke test hedef/platform erişimi bekliyor.
+[FlowPilot canlı demo](https://flowpilot-z7i9.onrender.com/)
+
+Uygulama Render Web Service üzerinde çalışır; public HTTPS Render tarafından sağlanır. React frontend ve ASP.NET Core API aynı origin'den sunulur. Kalıcı production veritabanı Render PostgreSQL'dir.
 
 ## Stack
 
@@ -137,7 +139,7 @@ dotnet ef database update --project server/FlowPilot.Api
 dotnet ef migrations has-pending-model-changes --project server/FlowPilot.Api
 ```
 
-Production script'i idempotent `migrations.sql` üretir. SQL'i inceleyip hedef DB'de ON_ERROR_STOP ile ayrı release adımında uygulayın; migration/history doğrulanmadan release başarılı sayılmaz. Ayrıntılı komutlar [production release rehberinde](deploy/README.md). Production migration/DB kaydı henüz doğrulanmadı; ayrı yerel QA DB'de uygulanması ve tekrar çalıştırılabilmesi doğrulandı.
+Production script'i idempotent `migrations.sql` üretir. SQL'i inceleyip hedef DB'de ON_ERROR_STOP ile ayrı release adımında uygulayın; migration/history doğrulanmadan release başarılı sayılmaz. Ayrıntılı komutlar [production release rehberinde](deploy/README.md). `20261007103358_InitialCreate` Render PostgreSQL'e başarıyla uygulandı; `__EFMigrationsHistory` tablosu ve canlı form kayıtlarının kalıcılığı bağımsız SQL sorgularıyla doğrulandı.
 
 ## Production package
 
@@ -149,7 +151,7 @@ bash scripts/publish-production.sh
 
 Çıktı `artifacts/production/`: .NET DLL, React wwwroot ve migration SQL. Framework-dependent paket ASP.NET Core 10 runtime gerektirir; OS'ye özel AppHost içermez. Paket üretimi secret/DB erişimi gerektirmez. Public HTTPS hosting, private port, gerçek AllowedHosts ve kalıcı PostgreSQL secret'ı hedef platformda ayarlanmalıdır. Paket dizini çalışma dizini olacak şekilde `dotnet FlowPilot.Api.dll` ile çalışır.
 
-[Release rehberi](deploy/README.md), HTTPS/same-origin yönlendirme, kontrollü migration ve gerçek browser/SQL kabul kapılarını içerir. Authenticated hedef bulunmadan ücretli resource/domain/production DB oluşturulmadı. Gerekliliği kanıtlanmadığı için health endpoint'i eklenmedi.
+[Release rehberi](deploy/README.md), HTTPS/same-origin yönlendirme, kontrollü migration ve gerçek browser/SQL kabul kapılarını içerir. Canlı dağıtım Render Web Service ve Render PostgreSQL kullanır. Health endpoint'i eklenmedi.
 
 ## Tests
 
@@ -196,19 +198,26 @@ Pending sırasında form kilitlenir; ref guard double submit'i engeller. Status/
 
 ## Requirement evidence
 
-Mobil/desktop landing page, dört alan, client/server validation, submitting/success/error, kayıt sonrası başarı ve kalıcı server-side kayıt test/browser/bağımsız SQL ile kanıtlandı. Kaynak kod, README ve AI_LOG repository'dedir. Repository private olduğundan değerlendiricinin GitHub erişimi ayrıca doğrulanmalıdır; görünürlük değiştirilmedi.
+Mobil/desktop landing page, dört alan, client/server validation, submitting/success/error, kayıt sonrası başarı ve kalıcı server-side kayıt test/browser/bağımsız SQL ile kanıtlandı. Kaynak kod, README ve AI_LOG public [GitHub repository](https://github.com/mberatkaya/flowpilot) içindedir.
+
+Canlı production doğrulaması:
+
+- [HTTPS site](https://flowpilot-z7i9.onrender.com/) çalışıyor; frontend ve API aynı origin'de.
+- Canlı form → API → Render PostgreSQL akışı doğrulandı; başarılı gönderimler `201 Created` döndürüyor.
+- Success yalnızca gerçek `201` sonrası gösteriliyor; form alanları ardından temizleniyor.
+- Production PostgreSQL'de form kayıtlarının kalıcı olarak oluştuğu bağımsız SQL sorgusuyla doğrulandı.
+- `20261007103358_InitialCreate` migration'ı uygulandı; `__EFMigrationsHistory` SQL ile doğrulandı.
 
 Sprint 7'de **yerel publish** smoke test: React/API aynı 5080 origin'inde, Production environment ve ayrı gerçek QA PostgreSQL. Loading sırasında success yok; HTTP 201 sonrası temizleme; bağımsız SQL ID `ff9174b0-cffa-43fe-bba5-3d647bf3392f`. Güvenli invalid email/short description, gerçek 400 ve değişmeyen SQL count. Console warn/error yok; 320/1440 viewport yatay taşma yok. Ayrıntılar AI_LOG'dadır. Bu kayıt canlı production DB kanıtı değildir.
 
-**Bekleyen teslim maddeleri:** gerçek canlı HTTPS URL, kalıcı production DB/migration, canlı pozitif/negatif smoke ve bağımsız production SQL kanıtı; Sprint 7 merge sonrası delivery SHA.
+İlk canlı form denemesi `500 Internal Server Error` döndürdü. Web Service `ConnectionStrings__Default` içindeki database adı `flowpilot_echo` olarak yazılmıştı; gerçek Render DB adı `flowpilot_ech0` idi. Database adı düzeltildikten sonra canlı gönderimler `201 Created` döndürdü ve production kayıtları bağımsız SQL ile doğrulandı. Ayrıntılar AI_LOG'un final live production deployment bölümündedir.
 
 ## AI-assisted development
 
-Codex ile yürütülen Sprint 1–7 ve sonraki Docker Compose çalışması, gerçek kararlar/hatalar ve doğrulamalar [AI_LOG.md](AI_LOG.md) içindedir. Tarihsel test sayıları güncel sonuç olarak sunulmaz.
+Codex ile yürütülen Sprint 1–7, sonraki Docker Compose çalışması ve final canlı deployment kaydı [AI_LOG.md](AI_LOG.md) içindedir. Tarihsel test sayıları güncel sonuç olarak sunulmaz.
 
 ## Known limitations
 
-- Hosting erişimi olmadığı için canlı production teslimi tamamlanmadı; yerel Production environment canlı ortamla eş tutulmaz.
 - E-posta teslim edilebilirliği doğrulanmaz; yalnız format kontrolü vardır.
 - Fiziksel cihaz/kapsamlı screen reader denetimi yapılmadı. Browser E2E/axe manuel; CI'da browser job'u yok.
 - Uygulama seviyesinde asılı network timeout, server idempotency ve yük/kapasite ayrıca doğrulanmadı.
@@ -216,8 +225,10 @@ Codex ile yürütülen Sprint 1–7 ve sonraki Docker Compose çalışması, ger
 
 ## Delivery
 
-Source repository: [mberatkaya/flowpilot](https://github.com/mberatkaya/flowpilot) (private; yetkili GitHub erişimi gerekir). Final inceleme: [PR #6](https://github.com/mberatkaya/flowpilot/pull/6), OPEN / NOT MERGED.
+Source repository: [mberatkaya/flowpilot](https://github.com/mberatkaya/flowpilot) (**public**). Final inceleme: [PR #6](https://github.com/mberatkaya/flowpilot/pull/6), **MERGED**.
 
-Live URL: **yok — hosting hedefi bekliyor**.
+Live URL: [FlowPilot](https://flowpilot-z7i9.onrender.com/).
 
-**Delivery commit tanımı:** Sprint 7 PR'ının `main` branch'ine merge sonucu SHA'sı. **Henüz belirlenmedi; PR merge edilmedi.** Daha sonraki README güncellemesi bu release kimliğini değiştirmez. Branch commit'leri inceleme adaylarıdır; delivery SHA olarak sunulmaz.
+PR #6 final merge commit: [`4b9ff75e0e1ce1bd7aa5ed9fdcf0474a1fe5fc3f`](https://github.com/mberatkaya/flowpilot/commit/4b9ff75e0e1ce1bd7aa5ed9fdcf0474a1fe5fc3f).
+
+**Teslim commit'i:** current main HEAD after this documentation update (`docs: record live production deployment`). Merge commit'i yukarıda ayrı kaydedilir; bu dokümantasyon commit'inin SHA'sı Git geçmişi/final rapordan alınır ve dosyaya tekrar yazılarak yeni commit döngüsü oluşturulmaz.

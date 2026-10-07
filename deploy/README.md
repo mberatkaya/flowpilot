@@ -1,6 +1,10 @@
 # Production release rehberi
 
-Mevcut ortamda authenticated deployment CLI/hosting hedefi bulunmadığından canlı yayın yapılmadı. Bu rehber, doğrulanmış paketi hedef belirlendiğinde yayınlamak içindir. Ücretli resource, production DB veya domain oluşturulmadı.
+Canlı uygulama: [FlowPilot](https://flowpilot-z7i9.onrender.com/).
+
+Güncel production durumu: Render Web Service; Render tarafından sağlanan public HTTPS; aynı origin'de React frontend ve ASP.NET Core API; kalıcı Render PostgreSQL. `20261007103358_InitialCreate` production DB'ye uygulandı ve `__EFMigrationsHistory` bağımsız SQL ile doğrulandı. Canlı smoke testte form gönderimleri `201 Created` döndürdü; production kayıtlarının kalıcılığı bağımsız SQL sorgusuyla doğrulandı.
+
+İlk canlı denemedeki `500`, Web Service `ConnectionStrings__Default` içindeki yanlış database adından kaynaklandı (`flowpilot_echo` yerine `flowpilot_ech0`). Ad düzeltildikten sonra gönderimler başarılı oldu. Aşağıdaki teknik bölümler sonraki release'ler için korunur.
 
 ## Mimari ve paket
 
@@ -51,7 +55,7 @@ cd artifacts/production
 dotnet FlowPilot.Api.dll
 ```
 
-Bu komut hosting'in process manager'ı/container runtime'ı tarafından çalıştırılır; kendi başına public HTTPS veya kalıcı DB oluşturmaz. Health endpoint'i eklenmedi; gerekli olduğuna dair bir hosting koşulu henüz yoktur.
+Bu komut hosting'in process manager'ı/container runtime'ı tarafından çalıştırılır; kendi başına public HTTPS veya kalıcı DB oluşturmaz. Mevcut canlı ortamda HTTPS Render, kalıcı DB Render PostgreSQL tarafından sağlanır. Health endpoint'i eklenmedi.
 
 ## Canlı kabul kontrolü
 
@@ -84,4 +88,4 @@ Güvenli negatif test: `invalid-email` veya 10 karakterden kısa description ile
 - Final branch CI success
 - İncelenen/merge edilen Sprint 7 PR'ı
 
-README Delivery bölümünün tanımı: **release/delivery commit, Sprint 7 PR'ının main'e merge sonucu SHA'sıdır**. README sonradan güncellenirse bu SHA değiştirilmez; sonraki dokümantasyon HEAD'i teslim kimliği olarak yeniden tanımlanmaz. PR henüz merge edilmediği için delivery SHA şu anda beklemektedir.
+[PR #6](https://github.com/mberatkaya/flowpilot/pull/6) **MERGED**; final merge commit [`4b9ff75e0e1ce1bd7aa5ed9fdcf0474a1fe5fc3f`](https://github.com/mberatkaya/flowpilot/commit/4b9ff75e0e1ce1bd7aa5ed9fdcf0474a1fe5fc3f). Source repository public'tir. README Delivery bölümündeki teslim commit'i **current main HEAD after this documentation update** (`docs: record live production deployment`) olarak tanımlanır; SHA Git geçmişi/final rapordan alınır, dokümantasyona tekrar yazılarak commit döngüsü oluşturulmaz.
