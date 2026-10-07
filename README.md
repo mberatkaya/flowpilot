@@ -1,5 +1,7 @@
 # FlowPilot
 
+İlk milestone'un amacı, kararları ve doğrulama kaydı aşağıda korunmuştur. **Güncel backend kurulumu ve çalışma durumu için bu dosyanın sonundaki “Sprint 2 — API ve PostgreSQL persistence” bölümünü kullanın.** İlk milestone'daki “veritabanı gerekli değil / endpoint yok / commit atılmadı” ifadeleri yalnızca o aşamaya aittir.
+
 ## Projenin amacı
 
 FlowPilot, küçük işletmelerin tekrar eden operasyonel süreçlerini otomatikleştirmesine yardımcı olan kurgusal bir teknoloji hizmetidir. Teknik değerlendirme projesinin nihai hedefi, mobil ve masaüstü uyumlu bir landing page üzerinden hizmet taleplerini toplamak ve PostgreSQL üzerinde kalıcı olarak saklamaktır.
@@ -123,3 +125,122 @@ Diğer makinelerde standart .NET 10 SDK kurulumu yeterlidir. xUnit, `global.json
 - [ ] Özelliklere uygun iş kuralı, API, form ve kalıcılık testleri.
 
 Authentication/authorization, admin paneli, Docker, Kubernetes ve deployment altyapısı bu aşamanın kapsamı dışındadır. Henüz commit atılmadı.
+
+## Sprint 2 — API ve PostgreSQL persistence
+
+### Güncel durum ve veri akışı
+
+`POST /api/requests` → `CreateServiceRequest` DTO → `ServiceRequestService` → `FlowPilotDbContext` → EF Core/Npgsql → PostgreSQL `ServiceRequests` tablosu.
+
+Servis, kaydı `SaveChangesAsync` ile gerçekten yazdıktan sonra `201 Created` döner. Veritabanı hatası başarıya dönüştürülmez; ASP.NET Core'un standart exception handler'ı genel `500` ProblemDetails yanıtı üretir. Ayrıntılı hata sözleşmesi Sprint 3'e bırakıldı. Otomatik migration uygulaması yapılmaz; database update aşağıdaki komutla açıkça çalıştırılır.
+
+`Id`, sunucunun ürettiği UUID'dir. `CreatedAt`, sunucunun ürettiği UTC `DateTimeOffset` değeridir ve PostgreSQL `timestamp with time zone` kolonunda saklanır. Request DTO'su bu iki alanı içermez; client'ın gönderdiği `createdAt` değeri kullanılmaz. Başarı response'u `id` ve `createdAt` içerir. GET endpoint'i geliştirilmediğinden response'a çalışmayan bir `Location` adresi eklenmez.
+
+Şema sınırları: isim 200, e-posta 320, hizmet tipi 64 ve açıklama 4000 karakter; alanlar veritabanında zorunludur. Bu sınırlar HTTP validasyonu değildir. Desteklenen hizmet tipleri `ServiceTypes.Supported` içinde merkezi olarak tanımlanmıştır:
+
+- `workflow-automation`
+- `system-integration`
+- `data-reporting`
+- `custom-software`
+
+Hizmet tipi allowlist kontrolü, format/uzunluk validasyonu ve ayrıntılı validation testleri Sprint 3'te eklenecek. Lookup table, generic repository, CQRS veya yeni katman projesi eklenmedi. React/frontend dosyaları değiştirilmedi.
+
+### PostgreSQL ve connection string
+
+Gereksinimler: .NET 10 SDK ve PostgreSQL. Yerel geliştirme/testler PostgreSQL 16.14 ile doğrulandı. İsteğe bağlı Compose yalnızca PostgreSQL çalıştırır; backend uygulaması container içinde çalışmaz. Otomatik entegrasyon testleri için çalışan bir Docker engine gerekir.
+
+Repository kökünden:
+
+```sh
+cp .env.example .env
+# .env içindeki POSTGRES_PASSWORD placeholder'ını yerel bir parola ile değiştirin.
+# ConnectionStrings__Default örneğindeki parolayı da aynı değerle güncelleyin.
+docker compose up -d --wait postgres
+```
+
+Compose, `.env` dosyasını okur ve PostgreSQL'i yalnızca `127.0.0.1:5433` adresine açar. Port gerekirse `.env` içindeki `POSTGRES_PORT` ile değiştirilebilir; backend connection string portu da buna uygun olmalıdır. Veriler `flowpilot_postgres_data` volume'unda korunur. Mevcut volume üzerindeki veritabanı parolası `.env` değişince otomatik değişmez.
+
+**ASP.NET Core `.env` dosyasını otomatik okumaz.** Backend ve EF CLI için connection string'i .NET User Secrets ile ayarlayın (aşağıdaki parola yalnızca placeholder'dır):
+
+```sh
+dotnet user-secrets set 'ConnectionStrings:Default' \
+  'Host=localhost;Port=5433;Database=flowpilot;Username=flowpilot;Password=YOUR_LOCAL_PASSWORD' \
+  --project server/FlowPilot.Api
+```
+
+Alternatif olarak aynı değeri process environment'ında `ConnectionStrings__Default` anahtarına verin. User Secrets kullanırken EF CLI terminalinde `ASPNETCORE_ENVIRONMENT=Development` ayarlanmalıdır. Eksik/boş connection string host başlangıcında anlaşılır bir configuration hatası üretir. Gerçek credential, appsettings/kaynak koduna yazılmaz; `.env` Git tarafından dışlanır. Yalnızca `.env.example` repository'de tutulur.
+
+### Migration, build ve backend çalıştırma
+
+Komutlar repository kökünden çalıştırılır. İlk milestone'da kurulan ayrı SDK kullanılıyorsa önce ilgili PATH ayarını yukarıdaki gibi yapın; EF tool'unun da aynı runtime'ı kullanması için gerekirse `export DOTNET_ROOT="$HOME/.local/share/flowpilot/dotnet"` ekleyin.
+
+```sh
+export ASPNETCORE_ENVIRONMENT=Development
+dotnet restore FlowPilot.slnx --locked-mode
+dotnet tool restore
+dotnet build FlowPilot.slnx --no-restore
+dotnet ef migrations list --project server/FlowPilot.Api
+dotnet ef database update --project server/FlowPilot.Api
+dotnet run --project server/FlowPilot.Api --launch-profile http --no-build
+```
+
+`InitialCreate` migration'ı, designer dosyası ve model snapshot'ı `server/FlowPilot.Api/Data/Migrations/` altında version control'e dahildir. Mevcut ilk migration'ı yeniden oluşturmayın. İleride şema değişikliği için örnek komut:
+
+```sh
+dotnet ef migrations add YourMigrationName --project server/FlowPilot.Api --output-dir Data/Migrations
+```
+
+Backend `http://localhost:5080` adresinde çalışır. `POST /api/requests` endpoint'i vardır; `/` için hâlâ `404` beklenir.
+
+### Örnek API request
+
+Yalnızca kurgusal veri kullanın:
+
+```sh
+curl -i http://localhost:5080/api/requests \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "name": "Test User",
+    "email": "test@example.com",
+    "serviceType": "workflow-automation",
+    "description": "This is a fictional evaluation request."
+  }'
+```
+
+Başarılı kayıt sonucu `201 Created` ve `{"id":"<server-generated-uuid>","createdAt":"<server-generated-utc-time>"}` döner. Response `id` değerini kullanarak gerçek kaydı kontrol etmek için:
+
+```sh
+docker compose exec postgres psql -U flowpilot -d flowpilot \
+  -c 'SELECT "Id", "Name", "Email", "ServiceType", "Description", "CreatedAt" FROM "ServiceRequests";'
+```
+
+Yerel PostgreSQL'i durdurmak için `docker compose stop postgres` kullanın; volume ve kayıtlar korunur.
+
+### Testler ve doğrulama
+
+Docker açıkken:
+
+```sh
+dotnet test --solution FlowPilot.slnx --no-build --no-restore
+dotnet ef migrations has-pending-model-changes --project server/FlowPilot.Api
+```
+
+Testcontainers ayrı ve geçici gerçek PostgreSQL 16.14 container'ı başlatır, aynı migration'ı uygular ve testlerden sonra kaldırır. Yerel geliştirme veritabanını değiştirmez; ilk çalıştırmada PostgreSQL ve resource reaper image'larını indirebilir. Docker yoksa entegrasyon testleri başarısız olur; fake/in-memory testine sessizce geçilmez.
+
+Test kapsamı: eksik configuration için başlangıç hatası; geçerli request için `201` ve bağımsız SQL bağlantısıyla tüm alanların kalıcı kaydı; client timestamp'ının yok sayılması; gerçek PostgreSQL'deki eksik database hatası için `500`. Detaylı validasyon testleri sonraki sprinttedir.
+
+Sprint 2 doğrulama sonuçları `AI_LOG.md` içinde kaydedilir.
+
+### Branch ve PR çalışma modeli
+
+```text
+main (ilk milestone: 0f8c2d4)
+└── feature/sprint-2-backend-persistence
+```
+
+- `main`, GitHub varsayılan branch'i ve stabil teslim branch'idir. Doğrudan geliştirme yapılmaz.
+- Her sprint için güncel `main` üzerinden ayrı `feature/`, `fix/` veya `test/` branch'i açılır.
+- Değişiklikler `main` hedefli Pull Request ile incelenir; mümkünse squash merge tercih edilir.
+- Sprint 2 PR'ı inceleme için açık bırakılacak; kullanıcı incelemeden merge edilmeyecek.
+
+Sprint 3'e bırakılanlar: server-side validasyon, ayrıntılı hata yönetimi ve ilgili testler. Frontend entegrasyonu, landing page, authentication/authorization, admin paneli, rate limiting, e-posta ve deployment geliştirilmedi.

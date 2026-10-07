@@ -56,3 +56,68 @@ Doğrulama sonunda commit atılmadı; branch `feature/flowpilot-mvp`. Developmen
 - Deployment, authentication/authorization ve admin paneli geliştirilmedi.
 
 Bu kayıt yalnızca ilk aşamayı kapsar. Commit atılmayacak; sonraki milestone'a kendiliğinden geçilmeyecek.
+
+## 2026-10-07 — Sprint 2: API + PostgreSQL persistence
+
+### Araç ve görev
+
+- Araç: Codex.
+- Görev: GitHub branch düzenini kurmak; `POST /api/requests` → EF Core → PostgreSQL kalıcı kayıt akışını geliştirmek, migration ve gerçek veritabanı testlerini eklemek; README'yi koruyarak güncellemek; commit/push yapmak ve `main` hedefli PR'ı merge etmeden incelemeye bırakmak.
+- ASP.NET Core skill'i, resmi EF Core/Npgsql ve Testcontainers belgeleri kullanıldı. Git/.NET/Docker/gh CLI üzerinden çalışıldı; alt ajan kullanılmadı.
+
+### Branch düzeni
+
+Başlangıçta temiz çalışma ağacında yalnızca `feature/flowpilot-mvp` vardı ve ilk milestone commit'i `0f8c2d4c04b382ecc9ce65c492a06af0b8431f91` idi. Bu commit'ten `main` oluşturulup `origin/main` olarak push edildi; GitHub varsayılan branch'i `main` yapıldı. Sprint 2 geliştirmeleri yalnızca `main` üzerinden oluşturulan `feature/sprint-2-backend-persistence` branch'inde yapıldı. `main` üzerine Sprint 2 commit'i yazılmadı.
+
+### Temel teknik kararlar
+
+- Tek API projesi içinde `ServiceRequests/` feature klasörü ve `Data/` persistence klasörü kullanıldı; yeni katman projeleri, generic repository veya CQRS eklenmedi.
+- Entity alanları: UUID `Id`, zorunlu string `Name`/`Email`/`ServiceType`/`Description`, UTC `DateTimeOffset` `CreatedAt`. Veritabanında UUID ve `timestamp with time zone` kullanıldı; string uzunlukları sırasıyla 200/320/64/4000 karakterle sınırlandı.
+- İstemci DTO'su yalnızca dört kullanıcı alanını içerir. `Id` ve `CreatedAt` sunucuda üretilir; client timestamp'ı kullanılmaz.
+- Endpoint ince tutuldu; entity oluşturma ve `SaveChangesAsync` somut `ServiceRequestService` içindedir. `201`, veritabanı yazımı tamamlandıktan sonra döner. Mevcut olmayan GET endpoint'ine `Location` linki eklenmedi.
+- DB hataları başarıya çevrilmez. Standart ASP.NET Core exception handler'ı genel `500` ProblemDetails sağlar; özel hata sözleşmesi ve ayrıntılı validation Sprint 3'e bırakıldı.
+- EF Core/Design/Relational ve yerel `dotnet-ef` 10.0.12, Npgsql EF provider 10.0.3 kullanıldı. Yerel tool manifest ve NuGet lock dosyaları repository'de tutulur.
+- Connection string, `ConnectionStrings:Default` configuration anahtarından alınır (`ConnectionStrings__Default` environment karşılığı). Eksik ayar anlaşılır bir başlangıç hatası verir. Otomatik startup migration'ı yoktur.
+- Desteklenen dört ServiceType değeri değiştirilemez merkezi kümede tanımlandı; HTTP allowlist validasyonu bu sprintte eklenmedi. Lookup table oluşturulmadı.
+- Compose yalnızca PostgreSQL 16.14 servisini içerir; localhost:5433'e bind edilir ve named volume kullanır. Backend containerize edilmedi. Gerçek yerel parola yalnızca Git dışında kalan `.env` dosyasında üretildi; README/environment örnekleri placeholder içerir.
+- Entegrasyon testleri Testcontainers 4.15.0 ile ayrı, geçici gerçek PostgreSQL başlatır; gerçek migration uygulanır. Kayıt, EF change tracker yerine bağımsız Npgsql SQL bağlantısı üzerinden kontrol edilir. Docker yoksa testler fail olur; fake/in-memory fallback yoktur.
+- React/frontend dosyaları değiştirilmedi; `git diff main -- client` boştu.
+
+### Yapılan doğrulamalar
+
+Komutlar repository kökünde, ayrı kurulan .NET SDK 10.0.401 ile çalıştırıldı. Migration ve manuel API doğrulamasında ignored `.env` değerleri yalnızca ilgili process environment'ına yüklendi; credential çıktıya veya version control'e yazılmadı.
+
+| Komut / kontrol | Sonuç |
+| --- | --- |
+| `dotnet restore FlowPilot.slnx` ve `--locked-mode` | Başarılı |
+| `dotnet tool restore` | dotnet-ef 10.0.12 hazır |
+| `dotnet build FlowPilot.slnx --no-restore` | 0 uyarı, 0 hata |
+| `docker compose up -d --wait postgres` | Gerçek PostgreSQL 16.14 healthy |
+| `dotnet ef migrations add InitialCreate --project server/FlowPilot.Api --output-dir Data/Migrations` | `20261007103358_InitialCreate`, designer ve snapshot oluşturuldu |
+| `dotnet ef database update --project server/FlowPilot.Api` | Migration gerçek yerel `flowpilot` veritabanına uygulandı |
+| `dotnet ef migrations list --project server/FlowPilot.Api` ve SQL history sorgusu | `20261007103358_InitialCreate` uygulanmış olarak doğrulandı |
+| `dotnet ef migrations has-pending-model-changes --project server/FlowPilot.Api` | Bekleyen model değişikliği yok |
+| `dotnet test --solution FlowPilot.slnx --no-build --no-restore` | 4 geçti, 0 başarısız, 0 atlanan; gerçek PostgreSQL fixture kullanıldı |
+| `dotnet list server/FlowPilot.Api/FlowPilot.Api.csproj package --vulnerable --include-transitive` | NuGet kaynağında bildirilen güvenlik açığı yok |
+| `dotnet run --project server/FlowPilot.Api --launch-profile http --no-build` | Host localhost:5080 üzerinde açıldı |
+| `curl POST /api/requests` ve `docker compose exec ... psql SELECT` | HTTP 201; aynı ID'nin tüm alanları gerçek DB'de doğrulandı |
+
+Manuel API doğrulamasında yalnızca kurgusal veri kullanıldı: `Test User`, `test@example.com`, `workflow-automation`, `This is a fictional evaluation request.` Kayıt ID'si `15cb77a3-d21a-4053-8108-0c6e21eb928d`; sunucu UTC zamanı `2026-10-07T10:36:10.615213+00:00`. Bu kayıt yerel named volume'da korunur. Testcontainer verileri fixture sonunda kaldırılır; kontrol için açılan API ve yerel PostgreSQL süreçleri durdurulur, yerel volume silinmez.
+
+Testler: eksik connection string başlangıç hatası; geçerli request'in `201` ve tüm alanlarla kalıcı kaydı; client'ın Unix epoch timestamp'ının yok sayılması; gerçek PostgreSQL'de bulunmayan database nedeniyle oluşan hatanın `500` dönmesi. Sonuncusu standart hata yolunu test eder; yanlışlıkla başarı dönen bir implementation kabul edilmez.
+
+### Gerçek düzeltmeler / reddedilen öneriler
+
+İlk build'de `Microsoft.EntityFrameworkCore.Relational` 10.0.4/10.0.12 transitive sürüm çakışması görüldü. API projesinde Relational 10.0.12 açıkça sabitlenerek giderildi; sonraki build 0 uyarı ile geçti. Ayrıca reddedilmiş bir AI önerisi yoktur; kayıt için hata veya reddedilmiş öneri uydurulmadı.
+
+### Henüz doğrulanmamış / sonraki aşamaya bırakılanlar
+
+- ServiceType allowlist, e-posta formatı, boşluk/uzunluk kuralları ve ayrıntılı HTTP validasyon yanıtları.
+- Ayrıntılı hata sözleşmesi ve validation/error handling testleri (Sprint 3).
+- Frontend form/API entegrasyonu, landing page ve UI durumları.
+- Authentication/authorization, admin paneli, rate limiting, e-posta ve deployment.
+- Production ortamı, kapasite/yük testleri ve .NET 10/PostgreSQL 16.14 dışındaki platform kombinasyonları doğrulanmadı.
+
+### Git ve inceleme
+
+Sprint 2 commit mesajı: `feat: add service request API and persistence`. Çalışma branch'i remote'a gönderilecek ve aynı başlıkla `main` hedefli PR açılacak. PR merge edilmeyecek; squash merge inceleme sonrası tercih edilen yöntemdir. Sprint 3'e geçilmeyecek. Commit SHA ve PR URL'si final raporda verilecek.
