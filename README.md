@@ -4,6 +4,8 @@
 
 Sprint 2 bölümü PostgreSQL kurulum rehberi olarak geçerlidir; **güncel validation ve HTTP sözleşmesi en alttaki Sprint 3 bölümündedir**. Önceki sprintlerde sonraya bırakılmış olarak yazılan validation işleri artık tamamlandı.
 
+Landing page'in güncel durumu ve frontend doğrulamaları Sprint 4 bölümündedir. Backend/API sözleşmesi Sprint 3'teki haliyle korunur.
+
 ## Projenin amacı
 
 FlowPilot, küçük işletmelerin tekrar eden operasyonel süreçlerini otomatikleştirmesine yardımcı olan kurgusal bir teknoloji hizmetidir. Teknik değerlendirme projesinin nihai hedefi, mobil ve masaüstü uyumlu bir landing page üzerinden hizmet taleplerini toplamak ve PostgreSQL üzerinde kalıcı olarak saklamaktır.
@@ -300,3 +302,37 @@ dotnet ef migrations has-pending-model-changes --project server/FlowPilot.Api
 Gerçek PostgreSQL/Testcontainers ile 42 test geçti: geçerli kayıt ve alanların trim edilmesi; dört hizmet tipinin kabulü; eksik/null/boş/whitespace ve uzunluk sınırları; alan bazlı hata sözleşmesi; tüm geçersiz isteklerde bağımsız SQL sorgularıyla kayıt sayısının değişmediği; client Id/CreatedAt değerlerinin yok sayılması; güvenli `500` yanıtı. Migration modelinde değişiklik yoktur. Fake/in-memory provider kullanılmadı.
 
 Sprint 3 PR'ı inceleme için açık bırakılır; merge edilmez. Sonraki sprintin landing page/frontend işi bu sprintte başlatılmadı.
+
+## Sprint 4 — Responsive hizmet landing page'i
+
+Sprint 3 PR #2'nin `main` içine merge edildiği doğrulandı. Çalışma branch'i `feature/sprint-4-landing-page`.
+
+Sayfa akışı: sürekli görünür basit navigasyon → ana mesaj ve form bölümüne kayan “Projenizi Anlatın” CTA'sı → dört hizmet → üç çalışma adımı → talep formu → kısa footer. İçerik Türkçedir; kurgusal hizmet için doğrulanamayacak müşteri/performans iddiaları eklenmedi.
+
+React ve mevcut CSS ile sıfırdan oluşturuldu. Hazır template/UI kit, Tailwind, yeni UI dependency'si veya harici font/görsel servisi kullanılmadı. Açık nötr yüzeyler, koyu yeşil vurgu ve sistem fontları kullanılır; örnek iş akışı CSS/HTML ve dekoratif ikonlar yerel SVG ile çizildi.
+
+Form alanları isim, e-posta, hizmet seçimi ve açıklamadır. Türkçe hizmet label'ları ve backend ile birebir aynı dört value, `client/src/services.ts` kaynağından gelir. Alanlar doldurulabilir; **gönderim kapalıdır**. Düğme disabled'dır, native submit/navigation engellenir; API çağrısı, kayıt, local storage veya sahte başarı mesajı yoktur. Gönderimin kapalı olduğu formda açıkça yazılır. Gerçek submit/API entegrasyonu Sprint 5'e bırakıldı.
+
+Accessibility: semantic header/main/section/footer, tek `h1`, h2/h3 sırası, gerçek label bağlantıları, skip link, klavye focus halkası, autocomplete ve alan açıklamaları bulunur. Dekoratif öğeler `aria-hidden` ile okunmaz; `prefers-reduced-motion` durumunda smooth scroll/transition kapatılır. CTA 52 px ve menü linkleri en az 44 px yüksekliktedir. Ölçülen ana metin/CTA/placeholder kontrastları 4.5:1 üzerinde; input sınırı 3.30:1'dir.
+
+Development server tarayıcı kontrolleri: **320×800, 390×844, 430×932, 768×1024, 1440×1000**. Yatay taşma görülmedi. Mobilde hizmetler ve form alanları tek sütuna geçer; tablet hizmetleri iki sütundur, form bölümü 900 px altında tek sütuna geçerek alanları geniş tutar. Mobil/desktop form, CTA anchor kayması ve klavyeyle isim → e-posta geçişi kontrol edildi. Fiziksel cihaz ve kapsamlı screen reader denetimi yapılmadı.
+
+Frontend komutları repository kökünden:
+
+```sh
+cd client
+npm ci
+npm run dev
+```
+
+Sayfa `http://127.0.0.1:5173` adresinde açılır; backend'in çalışması gerekmez. Kontroller `client/` içinden:
+
+```sh
+npm run typecheck
+npm test
+npm run build
+```
+
+8 Vitest/React Testing Library testi: ana heading/landmark'lar, dört hizmet, CTA hedefi ve navigasyon anchor'ları, erişilebilir form label'ları, dört option value/label eşleşmesi, sıralı süreç adımları, gönderimin kapalı olması/native submit'in engellenmesi ve skip link. API mock testleri eklenmedi.
+
+`server/`, backend testleri, migration'lar ve backend davranışı değiştirilmedi. Sprint 4 PR'ı inceleme için açık bırakılacak; merge edilmeyecek. Sprint 5'e kendiliğinden geçilmeyecek.
